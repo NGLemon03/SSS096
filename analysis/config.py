@@ -40,7 +40,7 @@ MEMORY = Memory(CACHE_DIR / "joblib", verbose=0, mmap_mode=None)
 
 # 交易成本與資本設定
 TICKER = "00631L.TW"  # 股票代號
-START_DATE = "2010-06-01" # 回測起始日期
+START_DATE = "2014-10-23" # 回測起始日期
 BUY_FEE = 0.001425 * 0.3 # 買入手續費 (0.1425% * 0.3)
 SELL_FEE = (0.001425 + 0.003) * 0.3 # 賣出手續費 (0.1425% + 0.3% * 0.3)
 COST = BUY_FEE + SELL_FEE # 交易成本
@@ -91,10 +91,10 @@ STRATEGY_PARAMS = {
 
 # 走查期間
 WF_PERIODS = [
-    {"test": ("2010-06-01", "2014-02-25")},
+    #{"test": ("2010-06-01", "2014-02-25")},
     {"test": ("2014-02-26", "2017-11-22")},
     {"test": ("2017-11-23", "2021-08-18")},
-    {"test": ("2021-08-19", dt.datetime.now().strftime('%Y-%m-%d'))}
+    {"test": ("2021-08-19", "2025-06-06")}
 ]
 # 壓力測試時段
 STRESS_PERIODS = [

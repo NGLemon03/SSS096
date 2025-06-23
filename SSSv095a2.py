@@ -42,21 +42,16 @@ import itertools
 
 # --- 專案結構與日誌設定 ---
 from analysis import config as cfg
+from analysis.logging_config import setup_logging
+import logging
 DATA_DIR = cfg.DATA_DIR
 LOG_DIR = cfg.LOG_DIR
 CACHE_DIR = cfg.CACHE_DIR
 # 全局費率常數
-BASE_FEE_RATE = 0.001425  # 基礎手續費率 0.1425%
-TAX_RATE = 0.003          # 賣出交易稅率 0.3%
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_DIR / 'backtest.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+BASE_FEE_RATE = 0.001425 # 基礎手續費 = 0.1425%
+TAX_RATE = 0.003 # 賣出交易稅率 = 0.3%
+setup_logging()  # 初始化統一日誌設定
+logger = logging.getLogger("SSSv095a2")  # 使用專屬 logger
 from functools import wraps
 import pickle
 # --- 快取路徑生成 ---
@@ -158,7 +153,7 @@ def fetch_yf_data(ticker: str, filename: Path, start_date: str = "2000-01-01", e
         return
 
     try:
-        df = yf.download(ticker, start=start_date, end=end_date or now_taipei.strftime('%Y-%m-%d'), auto_adjust=True)
+        df = yf.download(ticker, period='max', auto_adjust=True)
         if df.empty:
             raise ValueError("下載的數據為空")
         df.to_csv(filename)
@@ -326,7 +321,7 @@ def linreg_last_vectorized(series: np.ndarray, length: int) -> np.ndarray:
 
 def calc_smaa(series: pd.Series, linlen: int, factor: float, smaalen: int) -> pd.Series:
     """
-    計算 SMAA(去趨勢化後的簡單移動平均)，僅對足夠長的子序列計算。
+    計算 SMAA(去趨勢化後的簡單移動平均),僅對足夠長的子序列計算。
     
     Args:
         series (pd.Series): 輸入價格序列.
@@ -335,7 +330,7 @@ def calc_smaa(series: pd.Series, linlen: int, factor: float, smaalen: int) -> pd
         smaalen (int): 簡單移動平均窗口長度.
     
     Returns:
-        pd.Series: SMAA 序列，早期數據點可能為 NaN，與輸入索引對齊.
+        pd.Series: SMAA 序列,早期數據點可能為 NaN,與輸入索引對齊.
     """
     # 轉為 NumPy 陣列並初始化結果
     series_values = series.values
@@ -344,7 +339,7 @@ def calc_smaa(series: pd.Series, linlen: int, factor: float, smaalen: int) -> pd
     # 檢查最小數據需求
     min_required = max(linlen, smaalen)
     if len(series) < min_required:
-        logger.warning(f"序列長度不足: len={len(series)}, required={min_required}，回傳全 NaN")
+        logger.warning(f"序列長度不足: len={len(series)}, required={min_required},回傳全 NaN")
         return pd.Series(result, index=series.index)
     
     # 計算線性回歸
@@ -353,7 +348,7 @@ def calc_smaa(series: pd.Series, linlen: int, factor: float, smaalen: int) -> pd
     # 去趨勢化並應用放大因子
     detr = (series_values - lr) * factor
     
-    # 計算簡單移動平均，僅對有效窗口計算
+    # 計算簡單移動平均,僅對有效窗口計算
     if len(detr) >= smaalen:
         sma = np.convolve(detr, np.ones(smaalen)/smaalen, mode='valid')
         result[smaalen-1:] = sma  # 從第 smaalen-1 個數據點開始填入有效值
@@ -374,12 +369,12 @@ def precompute_smaa(ticker: str, param_combinations: list, start_date: str, smaa
         lock = FileLock(str(smaa_path) + ".lock")
         with lock:
             if smaa_path.exists():
-                logger.debug(f"SMAA cache exists: {smaa_path}")
+                logger.debug(f"SMAA 快取已存在: {smaa_path}")
                 continue
-            logger.info(f"Precomputing SMAA for {ticker} ({linlen}, {factor}, {smaalen})")
+            logger.info(f"SMAA 已快取 : {ticker} ({linlen}, {factor}, {smaalen})")
             smaa = calc_smaa(df_cleaned['close'], linlen, factor, smaalen)
             np.save(smaa_path, smaa.to_numpy())
-            logger.info(f"SMAA cached at {smaa_path}")
+            logger.info(f"SMAA 快取完成: {smaa_path}")
 
             
 def compute_single(df: pd.DataFrame, smaa_source_df: pd.DataFrame, linlen: int, factor: float, smaalen: int, devwin: int,smaa_source: str = "Self" ,cache_dir: str = str(cfg.SMAA_CACHE_DIR)) -> pd.DataFrame:
@@ -397,16 +392,16 @@ def compute_single(df: pd.DataFrame, smaa_source_df: pd.DataFrame, linlen: int, 
         if smaa_path.exists():
             smaa_data = np.load(smaa_path, mmap_mode="r")
             if len(smaa_data) != len(df_cleaned):
-                logger.warning(f"SMAA cache {smaa_path} length ({len(smaa_data)}) mismatches df_cleaned ({len(df_cleaned)}), recomputing...")
+                logger.warning(f"SMAA快取 {smaa_path} 的長度({len(smaa_data)})与 df_cleaned({len(df_cleaned)})不一致,正在重新計算…")
             else:
-                logger.debug(f"Cache hit: {smaa_path}")
+                logger.debug(f"快取已存在: {smaa_path}")
                 smaa = pd.Series(smaa_data, index=df_cleaned.index)
         
         if 'smaa' not in locals():  # 表示需要重新計算
-            logger.info(f"SMAA cache {smaa_path} not found, computing...")
+            logger.info(f"未找到 SMAA 快取 {smaa_path},正在計算...")
             smaa = calc_smaa(df_cleaned['close'], linlen, factor, smaalen)
             np.save(smaa_path, smaa.to_numpy())
-            logger.info(f"SMAA cached at {smaa_path}")
+            logger.info(f"SMAA快取完成: {smaa_path}")
     
     # 計算 base 和 sd,並返回完整 DataFrame
     base = smaa.ewm(alpha=1/devwin, adjust=False, min_periods=devwin).mean()
@@ -418,9 +413,9 @@ def compute_single(df: pd.DataFrame, smaa_source_df: pd.DataFrame, linlen: int, 
         'sd': sd
     }, index=df_cleaned.index)
     final_df = pd.concat([df[['open', 'high', 'low', 'close']], results_df], axis=1, join='inner')
-    final_df = final_df.dropna()  # 移除 NaN 行，但保留有效數據
+    final_df = final_df.dropna()  # 移除 NaN 行,但保留有效數據
     if final_df.empty:
-        logger.warning(f"最終 DataFrame 為空，可能是 SMAA 數據不足，策略: single, linlen={linlen}, smaalen={smaalen}, data_len={len(df_cleaned)}, valid_smaa={len(smaa.dropna())}")
+        logger.warning(f"最終 DataFrame 為空,可能是 SMAA 數據不足,策略: single, linlen={linlen}, smaalen={smaalen}, data_len={len(df_cleaned)}, valid_smaa={len(smaa.dropna())}")
     return final_df
 
 def compute_dual(df: pd.DataFrame, smaa_source_df: pd.DataFrame, linlen: int, factor: float, smaalen: int, short_win: int, long_win: int, smaa_source: str = "Self", cache_dir: str = str(cfg.SMAA_CACHE_DIR)) -> pd.DataFrame:
@@ -437,16 +432,16 @@ def compute_dual(df: pd.DataFrame, smaa_source_df: pd.DataFrame, linlen: int, fa
         if smaa_path.exists():
             smaa_data = np.load(smaa_path, mmap_mode="r")
             if len(smaa_data) != len(df_cleaned):
-                logger.warning(f"SMAA cache {smaa_path} length ({len(smaa_data)}) mismatches df_cleaned ({len(df_cleaned)}), recomputing...")
+                logger.warning(f"SMAA快取 {smaa_path} 的長度({len(smaa_data)})与 df_cleaned({len(df_cleaned)})不一致,正在重新計算…")
             else:
-                logger.debug(f"Cache hit: {smaa_path}")
+                logger.debug(f"快取已存在: {smaa_path}")
                 smaa = pd.Series(smaa_data, index=df_cleaned.index)
         
         if 'smaa' not in locals():  # 表示需要重新計算
-            logger.warning(f"SMAA cache {smaa_path} not found, computing...")
+            logger.warning(f"未找到 SMAA 快取 {smaa_path},正在計算...")
             smaa = calc_smaa(df_cleaned['close'], linlen, factor, smaalen)
             np.save(smaa_path, smaa.to_numpy())
-            logger.info(f"SMAA cached at {smaa_path}")
+            logger.info(f"SMAA快取完成: {smaa_path}")
     
     # 計算 short 和 long 週期的 base 和 sd
     base_s = smaa.ewm(alpha=1/short_win, adjust=False, min_periods=short_win).mean()
@@ -462,9 +457,9 @@ def compute_dual(df: pd.DataFrame, smaa_source_df: pd.DataFrame, linlen: int, fa
         'sd_long': sd_l
     }, index=df_cleaned.index)
     final_df = pd.concat([df[['open', 'high', 'low', 'close']], results_df], axis=1, join='inner')
-    final_df = final_df.dropna()  # 移除 NaN 行，但保留有效數據
+    final_df = final_df.dropna()  # 移除 NaN 行,但保留有效數據
     if final_df.empty:
-        logger.warning(f"最終 DataFrame 為空，可能是 SMAA 數據不足，策略: dual, linlen={linlen}, smaalen={smaalen}, data_len={len(df_cleaned)}, valid_smaa={len(smaa.dropna())}")
+        logger.warning(f"最終 DataFrame 為空,可能是 SMAA 數據不足,策略: dual, linlen={linlen}, smaalen={smaalen}, data_len={len(df_cleaned)}, valid_smaa={len(smaa.dropna())}")
     return final_df
 
 def compute_RMA(
@@ -519,9 +514,9 @@ def compute_RMA(
         'sd':   sd
     }, index=df_cleaned.index)
     final = pd.concat([df[['open','high','low','close']], results], axis=1, join='inner')
-    final = final.dropna()  # 移除 NaN 行，但保留有效數據
+    final = final.dropna()  # 移除 NaN 行,但保留有效數據
     if final.empty:
-        logger.warning(f"最終 DataFrame 為空，可能是 SMAA 數據不足，策略: single, linlen={linlen}, smaalen={smaalen}, data_len={len(df_cleaned)}, valid_smaa={len(smaa.dropna())}")
+        logger.warning(f"最終 DataFrame 為空,可能是 SMAA 數據不足,策略: single, linlen={linlen}, smaalen={smaalen}, data_len={len(df_cleaned)}, valid_smaa={len(smaa.dropna())}")
     return final
 
 
@@ -533,7 +528,7 @@ def compute_ssma_turn_combined(
     signal_cooldown_days: int = 10, quantile_win: int = 100,
     smaa_source: str = "Self", cache_dir: str = str(cfg.SMAA_CACHE_DIR)
 ) -> Tuple[pd.DataFrame, List[pd.Timestamp], List[pd.Timestamp]]:
-    logger.info("Starting compute_ssma_turn_combined with parameters: linlen=%d, factor=%.2f, smaalen=%d, prom_factor=%.2f, min_dist=%d, buy_shift=%d, exit_shift=%d, vol_window=%d, quantile_win=%d, signal_cooldown_days=%d",
+    logger.info("開始計算策略: linlen=%d, factor=%.2f, smaalen=%d, prom_factor=%.2f, min_dist=%d, buy_shift=%d, exit_shift=%d, vol_window=%d, quantile_win=%d, signal_cooldown_days=%d",
                 linlen, factor, smaalen, prom_factor, min_dist, buy_shift, exit_shift, vol_window, quantile_win, signal_cooldown_days)
 
     # 參數驗證
@@ -580,23 +575,23 @@ def compute_ssma_turn_combined(
             if smaa_path.exists():
                 smaa_data = np.load(smaa_path, mmap_mode="r")
                 if len(smaa_data) != len(df_cleaned):
-                    logger.warning(f"SMAA 暫存檔 {smaa_path} 長度 ({len(smaa_data)}) 與清洗後資料長度 ({len(df_cleaned)}) 不符,重新計算中…")
+                    logger.warning(f"SMAA快取 {smaa_path} 長度 ({len(smaa_data)}) 與清洗後資料長度 ({len(df_cleaned)}) 不符,重新計算中…")
                     smaa = calc_smaa(df_cleaned['close'], linlen, factor, smaalen)
                     np.save(smaa_path, smaa.to_numpy())
-                    logger.info(f"SMAA cached at {smaa_path}")
+                    logger.info(f"SMAA快取更新至 {smaa_path}")
                 else:
-                    logger.debug(f"Cache hit: {smaa_path}")
+                    logger.debug(f"載入SMAA快取 {smaa_path}")
                     smaa = pd.Series(smaa_data, index=df_cleaned.index)
             else:
-                logger.info(f"SMAA cache {smaa_path} not found, computing...")
+                logger.info(f"SMAA快取 {smaa_path} 不存在,重新計算中…")
                 smaa = calc_smaa(df_cleaned['close'], linlen, factor, smaalen)
                 np.save(smaa_path, smaa.to_numpy())
-                logger.info(f"SMAA cached at {smaa_path}")
+                logger.info(f"SMAA快取更新至 {smaa_path}")
         except Exception as e:
-            logger.warning(f"載入 SMAA 暫存檔 {smaa_path} 失敗:{e},重新計算中…")
+            logger.warning(f"載入SMAA快取 {smaa_path} 失敗:{e},重新計算中…")
             smaa = calc_smaa(df_cleaned['close'], linlen, factor, smaalen)
             np.save(smaa_path, smaa.to_numpy())
-            logger.info(f"SMAA cached at {smaa_path}")
+            logger.info(f"SMAA快取更新至 {smaa_path}")
 
     series_clean = smaa.dropna()
     if series_clean.empty:
@@ -671,25 +666,40 @@ def compute_ssma_turn_combined(
     # 買賣信號
     buy_dates = []
     sell_dates = []
+    seen_buy_dates = set()
+    seen_sell_dates = set()
+
     for dt in valid_valleys:
         try:
             tgt_idx = df.index.get_loc(dt) + 1 + buy_shift
             if 0 <= tgt_idx < len(df):
-                buy_dates.append(df.index[tgt_idx])
+                target_date = df.index[tgt_idx]
+                if target_date not in seen_buy_dates:
+                    buy_dates.append(target_date)
+                    seen_buy_dates.add(target_date)
         except KeyError:
             continue
+
     for dt in valid_peaks:
         try:
             tgt_idx = df.index.get_loc(dt) + 1 + exit_shift
             if 0 <= tgt_idx < len(df):
-                sell_dates.append(df.index[tgt_idx])
+                target_date = df.index[tgt_idx]
+                if target_date not in seen_sell_dates:
+                    sell_dates.append(target_date)
+                    seen_sell_dates.add(target_date)
         except KeyError:
             continue
-    
+
+    buy_dates = sorted(buy_dates)
+    sell_dates = sorted(sell_dates)
+    logger.info(f"生成買入信號: {buy_dates}, 總數: {len(buy_dates)}")
+    logger.info(f"生成賣出信號: {sell_dates}, 總數: {len(sell_dates)}")
+
     df_ind = df[['open', 'close']].copy()
     df_ind['smaa'] = smaa.reindex(df.index)
     if df_ind.dropna().empty:
-        logger.warning(f"最終 df_ind 為空，可能是 SMAA 數據不足，策略: ssma_turn, linlen={linlen}, smaalen={smaalen}, valid_smaa={len(smaa.dropna())}")
+        logger.warning(f"最終 df_ind 為空,可能是 SMAA 數據不足,策略: ssma_turn, linlen={linlen}, smaalen={smaalen}, valid_smaa={len(smaa.dropna())}")
     return df_ind.dropna(), buy_dates, sell_dates
 
 def calculate_metrics(trades: List[Tuple[pd.Timestamp, float]], df_ind: pd.DataFrame) -> Dict:
@@ -716,11 +726,11 @@ def calculate_metrics(trades: List[Tuple[pd.Timestamp, float]], df_ind: pd.DataF
         'payoff_ratio': np.nan,
         'sharpe_ratio': np.nan,
         'sortino_ratio': np.nan,
-        'max_consecutive_wins': 0,  # 新增
-        'max_consecutive_losses': 0,  # 新增
-        'avg_holding_period': np.nan,  # 新增
-        'annualized_volatility': np.nan,  # 新增
-        'profit_factor': np.nan,  # 新增 
+        'max_consecutive_wins': 0,# 新增
+        'max_consecutive_losses': 0,# 新增
+        'avg_holding_period': np.nan,# 新增
+        'annualized_volatility': np.nan,# 新增
+        'profit_factor': np.nan,# 新增 
     }
     
     if not trades:
@@ -826,7 +836,7 @@ def backtest_unified(
         sell_dates (Optional[List[pd.Timestamp]]): 外部賣出信號日期(僅 ssma_turn 使用).
         discount (float): 單邊交易成本折扣因子(例如 0.30 表示 30% 手續費).
         trade_cooldown_bars (int): 冷卻期(交易間隔,單位:bars).
-        bad_holding (bool): 限制賣出報酬率不可低於 -20%.
+        ***bad_holding (bool): 限制賣出報酬率不可低於 -20%.
             True  → 啟用「凹單延後出場」機制(如果策略沒設定傳統停損門檻,則只要浮虧 ≤ 0 就先不賣,等下次訊號再賣）
             False → 不啟用「凹單」,改走傳統停損(若有設定門檻）或一般賣出邏輯.        
         use_leverage (bool): 是否啟用槓桿模式.
@@ -838,8 +848,8 @@ def backtest_unified(
         Dict: 包含交易記錄、交易 DataFrame、信號 DataFrame 和績效指標.
     """
     if not isinstance(df_ind, pd.DataFrame):
-            logger.error(f"df_ind must be a pandas DataFrame, got {type(df_ind)}")
-            st.error(f"df_ind must be a pandas DataFrame, got {type(df_ind)}")
+            logger.error(f"df_ind 必須是一個 pandas DataFrame,卻傳入了 {type(df_ind)}")
+            st.error(f"df_ind 必須是一個 pandas DataFrame,卻傳入了 {type(df_ind)}")
             return {'trades': [], 'trade_df': pd.DataFrame(), 'signals_df': pd.DataFrame(), 'metrics': {}}
 
     BUY_FEE_RATE = BASE_FEE_RATE * discount
@@ -955,8 +965,8 @@ def backtest_unified(
                         })
                         signals.append({'signal_date': signal_date, 'type': 'sell', 'price': next_open})
                         accum_interest = 0.0
-                    continue
-
+                        logger.debug(f"強制平倉: signal_date={signal_date}, in_pos={in_pos}, total_shares={total_shares}")
+                        continue  # 避免後續賣出邏輯
         # ssma_turn 策略特定邏輯:處理待執行買單
         if strategy_type == 'ssma_turn' and pending_buy is not None and i == pending_buy and i - last_trade_idx > trade_cooldown_bars and not in_pos:
             shares = int(cash // next_open)
@@ -986,7 +996,7 @@ def backtest_unified(
                 })
                 signals.append({'signal_date': signal_date, 'type': 'buy', 'price': current_price})
                 trades.append((entry_date, 0))
-                logger.debug(f"Buy trade executed at {entry_date} with price {entry_price:.2f}")
+                logger.debug(f"於{entry_date} 進場,價格為 {entry_price},持股數為 {shares}")
             pending_buy = None
             buy_idx += 1
             continue
@@ -1025,7 +1035,7 @@ def backtest_unified(
             in_pos = False
             last_trade_idx = i
             accum_interest = 0.0
-            logger.debug(f"Stop-loss sell at {exit_date} with return {trade_ret:.2%}")
+            logger.debug(f"凹單延後出場,於 {exit_date} 出場,價格為 {exit_price},持股數為 {sell_shares},獲利為 {trade_ret}")
             continue
 
         # 買入邏輯
@@ -1034,8 +1044,7 @@ def backtest_unified(
             if strategy_type == 'ssma_turn' and buy_idx < len(buy_dates) and signal_date >= buy_dates[buy_idx]:
                 if sell_idx < len(sell_dates) and signal_date >= sell_dates[sell_idx]:
                     pending_buy = i + 1
-                    buy_idx += 1
-                    logger.debug(f"Pending buy signal at {signal_date} due to simultaneous sell signal, scheduled for index {pending_buy}.")
+                    logger.debug(f"買入訊號={signal_date}, 由於與賣出信號同時出現,買入信號被延後,排程到索引 {pending_buy} 執行")
                     continue
                 should_buy = True
             elif strategy_type in ['single', 'dual', 'RMA'] and df_ind['smaa'].iloc[i] < df_ind['base'].iloc[i] + df_ind['sd'].iloc[i] * params['buy_mult']:
@@ -1074,7 +1083,7 @@ def backtest_unified(
                 #trades.append((entry_date, 0))
                 if strategy_type == 'ssma_turn':
                     buy_idx += 1
-                logger.debug(f"Buy trade executed at {entry_date} with price {entry_price:.2f}")
+                logger.debug(f"於{entry_date} 進場,價格為 {entry_price},持股數為 {shares}")
 
         # 賣出邏輯
         if in_pos:
@@ -1130,7 +1139,7 @@ def backtest_unified(
                 accum_interest = 0.0
                 if strategy_type == 'ssma_turn':
                     sell_idx += 1
-                logger.debug(f"Sell trade at {exit_date} with return {trade_ret:.2%}")
+                logger.debug(f"於{exit_date} 賣出,價格為 {exit_price},持股數為 {sell_shares}")
 
     # 關閉未平倉位
     if in_pos and total_shares > 0:
@@ -1163,7 +1172,7 @@ def backtest_unified(
         })
         signals.append({'signal_date': exit_date, 'type': 'sell', 'price': exit_price})
         accum_interest = 0.0
-        logger.debug(f"Final sell at {exit_date} with return {trade_ret:.2%}")
+        logger.debug(f"最後平倉於 {exit_date} ,報酬率 {trade_ret:.2%}")
 
     # 整理結果
     trade_df = pd.DataFrame(trade_records)
@@ -1174,7 +1183,7 @@ def backtest_unified(
     
     ret = metrics.get('total_return', metrics.get('ROI', float('nan')))
     nt  = metrics.get('num_trades', 0)
-    logging.info(f"Backtest completed for {strategy_type}: total_return={ret:.2%}, num_trades={nt}")
+    logger.info(f"{strategy_type} 回測結果: 總報酬率 = {ret:.2%}, 交易次數={nt}")
 
     return {'trades': trades, 'trade_df': trade_df, 'signals_df': signals_df, 'metrics': metrics}
 
@@ -1311,7 +1320,7 @@ def plot_equity_cash(trades_df: pd.DataFrame, price_df: pd.DataFrame, initial_ca
             shares_series.loc[dt:] = 0
             cash_series.loc[dt:] += shares * px
 
-    # 3. 計算每日浮動權益 = 現金 + 持股 × 收盤價
+    # 3. 計算每日浮動權益 = 現金 + 持股 x 收盤價
     equity_series = cash_series + shares_series * price_df['close']
 
     # 4. 繪製圖表
@@ -1430,7 +1439,7 @@ def run_app():
     end_date_input = st.sidebar.text_input("數據結束日期 (YYYY-MM-DD):", "")
     trade_cooldown_bars = st.sidebar.number_input("冷卻期 (bars):", min_value=0, max_value=20, value=3, step=1, format="%d")
     discount = st.sidebar.slider("券商折數(0.7=7折, 0.1=1折)", min_value=0.1, max_value=0.70, value=0.30, step=0.01)
-    st.sidebar.markdown("買進手續費 = 0.1425% × 折數,賣出成本 = 0.1425% × 折數 + 0.3%(交易稅).")
+    st.sidebar.markdown("買進手續費 = 0.1425% x 折數,賣出成本 = 0.1425% x 折數 + 0.3%(交易稅).")
     bad_holding = st.sidebar.checkbox("賣出報酬率<-20%,等待下次賣點", value=False)
     run_backtests = st.sidebar.button("🚀 一鍵執行所有回測")
 
@@ -1448,7 +1457,7 @@ def run_app():
         "Single ●": {"linlen": 100, "factor": 40, "smaalen": 40, "devwin": 40, "buy_mult": 0.2, "sell_mult": 2,"stop_loss":0.05, "strategy_type": "single"},
         "Single ▲": {"linlen": 80, "factor": 10, "smaalen": 60, "devwin": 20, "buy_mult": 0.4, "sell_mult": 1.5, "strategy_type": "single"},
         "Dual-Scale": {"linlen": 60, "factor": 40, "smaalen": 20, "short_win": 40, "long_win": 100, "buy_mult": 0.3, "sell_mult": 1.3, "strategy_type": "dual"},
-        "RMA-Method": {"linlen": 80, "factor": 40, "smaalen": 60, "rma_len": 20, "dev_len": 40, "buy_mult": 0.45, "sell_mult": 2.0, "strategy_type": "RMA"},
+        "RMA-Method": {"linlen": 48, "factor": 80, "smaalen": 107, "rma_len": 90, "dev_len": 10, "buy_mult": 1.35, "sell_mult": 0.85, "strategy_type": "RMA"},
         "SSMA_turn_1": {"linlen": 10, "factor": 40, "smaalen": 80, "prom_factor": 70, "min_dist": 9, "buy_shift": 5, "exit_shift": 0, "vol_window": 20, "stop_loss": 0.15, "quantile_win": 100, "signal_cooldown_days": 3, "buy_mult": 0, "sell_mult": 0, "strategy_type": "ssma_turn"},
         "SSMA_turn_2": {"linlen": 10, "factor": 40, "smaalen": 80, "prom_factor": 70, "min_dist": 7, "buy_shift": 0, "exit_shift": 0, "vol_window": 10, "stop_loss": 0.05, "quantile_win": 100, "signal_cooldown_days": 7, "buy_mult": 0, "sell_mult": 0, "strategy_type": "ssma_turn"}
     }
