@@ -1,0 +1,470 @@
+/* --------- 深色主題：黑底白字 --------- */
+.theme-dark input[type="text"],
+.theme-dark input[type="number"],
+.theme-dark .Select-control,
+.theme-dark .Select-menu-outer,
+.theme-dark .Select-value,
+.theme-dark .Select-placeholder {
+    background-color: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+.theme-dark .Select-menu-outer {
+    background-color: #232323 !important;
+    color: #fff !important;
+}
+.theme-dark .Select-value-label, .theme-dark .Select-placeholder {
+    color: #fff !important;
+}
+.theme-dark input[type="text"]:focus, .theme-dark input[type="number"]:focus {
+    background-color: #232323 !important;
+    color: #fff !important;
+    border: 1.5px solid #00bfff !important;
+}
+.theme-dark .rc-slider-track, .theme-dark .rc-slider-handle {
+    background: #00bfff !important;
+    border-color: #00bfff !important;
+}
+.theme-dark .rc-slider-rail {
+    background: #444 !important;
+}
+.theme-dark .dash-table-container .dash-spreadsheet-container {
+    background-color: #232323 !important;
+    color: #fff !important;
+}
+.theme-dark .card, .theme-dark .tab-content, .theme-dark .nav-tabs {
+    background-color: #232323 !important;
+    color: #fff !important;
+}
+.theme-dark .btn {
+    background-color: #222 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+
+/* --------- 淺色主題：白底黑字 --------- */
+.theme-light input[type="text"],
+.theme-light input[type="number"],
+.theme-light .Select-control,
+.theme-light .Select-menu-outer,
+.theme-light .Select-value,
+.theme-light .Select-placeholder {
+    background-color: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+.theme-light .Select-menu-outer {
+    background-color: #fff !important;
+    color: #111 !important;
+}
+.theme-light .Select-value-label, .theme-light .Select-placeholder {
+    color: #111 !important;
+}
+.theme-light input[type="text"]:focus, .theme-light input[type="number"]:focus {
+    background-color: #fff !important;
+    color: #111 !important;
+    border: 1.5px solid #007bff !important;
+}
+.theme-light .rc-slider-track, .theme-light .rc-slider-handle {
+    background: #007bff !important;
+    border-color: #007bff !important;
+}
+.theme-light .rc-slider-rail {
+    background: #ccc !important;
+}
+.theme-light .dash-table-container .dash-spreadsheet-container {
+    background-color: #fff !important;
+    color: #111 !important;
+}
+.theme-light .card, .theme-light .tab-content, .theme-light .nav-tabs {
+    background-color: #fff !important;
+    color: #111 !important;
+}
+.theme-light .btn {
+    background-color: #f8f9fa !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+
+/* --------- 自訂主題：藍底黃字 --------- */
+.theme-blue input[type="text"],
+.theme-blue input[type="number"],
+.theme-blue .Select-control,
+.theme-blue .Select-menu-outer,
+.theme-blue .Select-value,
+.theme-blue .Select-placeholder {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+.theme-blue .Select-menu-outer {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+}
+.theme-blue .Select-value-label, .theme-blue .Select-placeholder {
+    color: #ffe066 !important;
+}
+.theme-blue input[type="text"]:focus, .theme-blue input[type="number"]:focus {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+    border: 1.5px solid #ffe066 !important;
+}
+.theme-blue .rc-slider-track, .theme-blue .rc-slider-handle {
+    background: #ffe066 !important;
+    border-color: #ffe066 !important;
+}
+.theme-blue .rc-slider-rail {
+    background: #0055aa !important;
+}
+.theme-blue .dash-table-container .dash-spreadsheet-container {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+}
+.theme-blue .card, .theme-blue .tab-content, .theme-blue .nav-tabs {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+}
+.theme-blue .btn {
+    background-color: #003366 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+
+/* --------- 請勿用 .theme-dark * 或 .theme-light * 或 .theme-blue * 這種全選擇器，避免影響 Plotly 圖表 --------- */
+
+/* --------- 精準主題 CSS for Dash 元件區塊 --------- */
+
+/* 深色主題 */
+.theme-dark .sidebar-panel {
+    background: #181818 !important;
+    color: #fff !important;
+    border-right: 1px solid #333;
+    transition: all 0.3s ease;
+}
+.theme-dark .main-content-panel {
+    background: #232323 !important;
+    color: #fff !important;
+    transition: all 0.3s ease;
+}
+.theme-dark .metrics-cards-row {
+    background: #232323 !important;
+}
+.theme-dark #main-metrics-table, .theme-dark #compare-table {
+    background: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+.theme-dark .main-metrics-graph, .theme-dark .main-cash-graph, .theme-dark .compare-graph {
+    background: #181818 !important;
+    border-radius: 8px;
+    padding: 8px;
+}
+.theme-dark .version-history-panel {
+    background: #232323 !important;
+    color: #fff !important;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+/* 淺色主題 */
+.theme-light .sidebar-panel {
+    background: #fff !important;
+    color: #111 !important;
+    border-right: 1px solid #eee;
+    transition: all 0.3s ease;
+}
+.theme-light .main-content-panel {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    transition: all 0.3s ease;
+}
+.theme-light .metrics-cards-row {
+    background: #fff !important;
+}
+.theme-light #main-metrics-table, .theme-light #compare-table {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+.theme-light .main-metrics-graph, .theme-light .main-cash-graph, .theme-light .compare-graph {
+    background: #fff !important;
+    border-radius: 8px;
+    padding: 8px;
+}
+.theme-light .version-history-panel {
+    background: #fff !important;
+    color: #111 !important;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+/* 藍黃主題 */
+.theme-blue .sidebar-panel {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border-right: 1px solid #0055aa;
+    transition: all 0.3s ease;
+}
+.theme-blue .main-content-panel {
+    background: #002244 !important;
+    color: #ffe066 !important;
+    transition: all 0.3s ease;
+}
+.theme-blue .metrics-cards-row {
+    background: #002244 !important;
+}
+.theme-blue #main-metrics-table, .theme-blue #compare-table {
+    background: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+.theme-blue .main-metrics-graph, .theme-blue .main-cash-graph, .theme-blue .compare-graph {
+    background: #003366 !important;
+    border-radius: 8px;
+    padding: 8px;
+}
+.theme-blue .version-history-panel {
+    background: #002244 !important;
+    color: #ffe066 !important;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+/* --------- 頭部控制按鈕樣式 --------- */
+.header-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 0;
+    gap: 10px;
+    background: linear-gradient(135deg, #003366 0%, #002244 100%);
+    border-radius: 0 0 15px 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.theme-dark .header-controls {
+    background: linear-gradient(135deg, #003366 0%, #002244 100%);
+}
+
+.theme-light .header-controls {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.theme-blue .header-controls {
+    background: linear-gradient(135deg, #002244 0%, #001122 100%);
+}
+
+/* --------- 側邊欄隱藏時的樣式 --------- */
+.sidebar-panel.collapsed {
+    width: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.main-content-panel.expanded {
+    width: 100% !important;
+}
+
+/* --------- 策略分隔線樣式 --------- */
+.strategy-separator {
+    border-top: 2px solid #444;
+    margin: 30px 0;
+    padding-top: 20px;
+}
+
+.theme-light .strategy-separator {
+    border-top-color: #ccc;
+}
+
+.theme-blue .strategy-separator {
+    border-top-color: #0055aa;
+}
+
+/* --------- 表格樣式 --------- */
+.theme-dark #main-metrics-table .dash-header,
+.theme-dark #compare-table .dash-header,
+.theme-dark [id*="strategy-table"] .dash-header {
+    background-color: #333 !important;
+    color: #fff !important;
+    font-weight: bold !important;
+}
+.theme-dark #main-metrics-table .dash-cell,
+.theme-dark #compare-table .dash-cell,
+.theme-dark [id*="strategy-table"] .dash-cell {
+    background-color: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+.theme-dark #main-metrics-table .dash-table-page,
+.theme-dark #compare-table .dash-table-page,
+.theme-dark [id*="strategy-table"] .dash-table-page {
+    background-color: #232323 !important;
+    color: #fff !important;
+}
+.theme-dark #main-metrics-table .dash-spreadsheet-menu,
+.theme-dark #compare-table .dash-spreadsheet-menu,
+.theme-dark [id*="strategy-table"] .dash-spreadsheet-menu {
+    background-color: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+
+.theme-light #main-metrics-table .dash-header,
+.theme-light #compare-table .dash-header,
+.theme-light [id*="strategy-table"] .dash-header {
+    background-color: #f8f9fa !important;
+    color: #111 !important;
+    font-weight: bold !important;
+}
+.theme-light #main-metrics-table .dash-cell,
+.theme-light #compare-table .dash-cell,
+.theme-light [id*="strategy-table"] .dash-cell {
+    background-color: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+.theme-light #main-metrics-table .dash-table-page,
+.theme-light #compare-table .dash-table-page,
+.theme-light [id*="strategy-table"] .dash-table-page {
+    background-color: #fff !important;
+    color: #111 !important;
+}
+.theme-light #main-metrics-table .dash-spreadsheet-menu,
+.theme-light #compare-table .dash-spreadsheet-menu,
+.theme-light [id*="strategy-table"] .dash-spreadsheet-menu {
+    background-color: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+
+.theme-blue #main-metrics-table .dash-header,
+.theme-blue #compare-table .dash-header,
+.theme-blue [id*="strategy-table"] .dash-header {
+    background-color: #003366 !important;
+    color: #ffe066 !important;
+    font-weight: bold !important;
+}
+.theme-blue #main-metrics-table .dash-cell,
+.theme-blue #compare-table .dash-cell,
+.theme-blue [id*="strategy-table"] .dash-cell {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+.theme-blue #main-metrics-table .dash-table-page,
+.theme-blue #compare-table .dash-table-page,
+.theme-blue [id*="strategy-table"] .dash-table-page {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+}
+.theme-blue #main-metrics-table .dash-spreadsheet-menu,
+.theme-blue #compare-table .dash-spreadsheet-menu,
+.theme-blue [id*="strategy-table"] .dash-spreadsheet-menu {
+    background-color: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+
+/* --------- 卡片標題樣式 --------- */
+.theme-dark .card-title-label { color: #ffe066 !important; font-size: 16px; }
+.theme-light .card-title-label { color: #007bff !important; font-size: 16px; }
+.theme-blue .card-title-label { color: #ffe066 !important; font-size: 16px; }
+
+/* --------- 頭部按鈕樣式 --------- */
+.theme-dark .main-header-bar { background: #003366 !important; color: #ffe066 !important; border-radius: 0 0 8px 8px; }
+.theme-light .main-header-bar { background: #f8f9fa !important; color: #007bff !important; border-radius: 0 0 8px 8px; }
+.theme-blue .main-header-bar { background: #002244 !important; color: #ffe066 !important; border-radius: 0 0 8px 8px; }
+
+/* --------- 頁籤樣式 --------- */
+.theme-dark .main-tabs-bar .tab { background: #232323 !important; color: #ffe066 !important; }
+.theme-dark .main-tabs-bar .tab--selected { background: #003366 !important; color: #ffe066 !important; border-bottom: 2px solid #ffe066 !important; }
+.theme-light .main-tabs-bar .tab { background: #fff !important; color: #007bff !important; }
+.theme-light .main-tabs-bar .tab--selected { background: #f8f9fa !important; color: #007bff !important; border-bottom: 2px solid #007bff !important; }
+.theme-blue .main-tabs-bar .tab { background: #002244 !important; color: #ffe066 !important; }
+.theme-blue .main-tabs-bar .tab--selected { background: #003366 !important; color: #ffe066 !important; border-bottom: 2px solid #ffe066 !important; }
+
+/* --------- 策略頁籤樣式 --------- */
+.theme-dark .strategy-tabs-bar .tab { 
+    background: #181818 !important; 
+    color: #ffe066 !important; 
+    border: 1px solid #444 !important;
+    margin-right: 2px !important;
+    border-radius: 4px 4px 0 0 !important;
+}
+.theme-dark .strategy-tabs-bar .tab--selected { 
+    background: #003366 !important; 
+    color: #ffe066 !important; 
+    border-bottom: 2px solid #ffe066 !important;
+    border-color: #ffe066 !important;
+}
+.theme-light .strategy-tabs-bar .tab { 
+    background: #f8f9fa !important; 
+    color: #007bff !important; 
+    border: 1px solid #ccc !important;
+    margin-right: 2px !important;
+    border-radius: 4px 4px 0 0 !important;
+}
+.theme-light .strategy-tabs-bar .tab--selected { 
+    background: #fff !important; 
+    color: #007bff !important; 
+    border-bottom: 2px solid #007bff !important;
+    border-color: #007bff !important;
+}
+.theme-blue .strategy-tabs-bar .tab { 
+    background: #001122 !important; 
+    color: #ffe066 !important; 
+    border: 1px solid #0055aa !important;
+    margin-right: 2px !important;
+    border-radius: 4px 4px 0 0 !important;
+}
+.theme-blue .strategy-tabs-bar .tab--selected { 
+    background: #002244 !important; 
+    color: #ffe066 !important; 
+    border-bottom: 2px solid #ffe066 !important;
+    border-color: #ffe066 !important;
+}
+
+/* --------- 策略頁籤內容區域樣式 --------- */
+.strategy-tabs-bar {
+    margin-top: 20px !important;
+    border-bottom: 2px solid #444 !important;
+}
+
+.theme-light .strategy-tabs-bar {
+    border-bottom-color: #ccc !important;
+}
+
+.theme-blue .strategy-tabs-bar {
+    border-bottom-color: #0055aa !important;
+}
+
+/* --------- 策略頁籤內容間距 --------- */
+.strategy-tabs-bar .tab-content {
+    padding: 20px 0 !important;
+}
+
+/* --------- 策略頁籤標籤字體大小 --------- */
+.strategy-tabs-bar .tab {
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    padding: 8px 16px !important;
+    min-width: 120px !important;
+    text-align: center !important;
+}
+
+/* --------- 策略頁籤懸停效果 --------- */
+.theme-dark .strategy-tabs-bar .tab:hover {
+    background: #2a2a2a !important;
+    color: #fff !important;
+}
+
+.theme-light .strategy-tabs-bar .tab:hover {
+    background: #e9ecef !important;
+    color: #0056b3 !important;
+}
+
+.theme-blue .strategy-tabs-bar .tab:hover {
+    background: #003366 !important;
+    color: #fff !important;
+} 

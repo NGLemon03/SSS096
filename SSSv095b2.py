@@ -55,20 +55,18 @@ TAX_RATE = 0.003 # 賣出交易稅率 = 0.3%
 
 # 預計算 SMAA
 param_presets = {
-"Single 1": {"linlen": 60, "factor": 40, "smaalen": 20, "devwin": 40, "buy_mult": 0.44, "sell_mult": 1.55, "strategy_type": "single", "smaa_source": "Self"},
+
 "Single 2": {"linlen": 90, "factor": 40, "smaalen": 30, "devwin": 30, "buy_mult": 1.45, "sell_mult": 1.25,"stop_loss":0.2, "strategy_type": "single", "smaa_source": "Self"},
 "Single 3": {"linlen": 80, "factor": 10, "smaalen": 60, "devwin": 20, "buy_mult": 0.4, "sell_mult": 1.5, "strategy_type": "single", "smaa_source": "Self"},
-
-#"Dual-Scale": {"linlen": 60, "factor": 40, "smaalen": 20, "short_win": 40, "long_win": 100, "buy_mult": 0.3, "sell_mult": 1.3, "strategy_type": "dual", "smaa_source": "Self"},
-"RMA": {"linlen": 41, "factor": 45, "smaalen": 37, "rma_len": 55, "dev_len": 40, "buy_mult": 1.7, "sell_mult": 1.65, "stop_loss": 0.09,  "strategy_type": "RMA", "smaa_source": "Self"},
-"RMA2":{'linlen': 79, 'smaalen': 232, 'rma_len': 55, 'dev_len': 40, 'factor': 40, 'buy_mult': 0.5, 'sell_mult': 2.15, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,"strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2414.TW)"},
-
-    
+"ssma_turn_1308": {'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 47, 'min_dist': 16, 'buy_shift': 2, 'exit_shift': 1, 'vol_window': 90, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.1, 'stop_loss': 0.0,
+                "strategy_type": "ssma_turn", "smaa_source": "Self"},        
+"ssma_turn_1939":{'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 48, 'min_dist': 14, 'buy_shift': 1, 'exit_shift': 1, 'vol_window': 80, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.6, 'stop_loss': 0.2,
+                "strategy_type": "ssma_turn", "smaa_source": "Self"},    
 "SSMA_turn 0": {"linlen": 25, "smaalen": 85, "factor": 80.0, "prom_factor": 9, "min_dist": 8, "buy_shift": 0, "exit_shift": 6, "vol_window": 90, "quantile_win": 65, "signal_cooldown_days": 7, "buy_mult": 0.15, "sell_mult": 0.1, "stop_loss": 0.13, 
                 "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
 "RMA_1921": {'linlen': 167, 'smaalen': 107, 'rma_len': 35, 'dev_len': 80, 'factor': 40, 'buy_mult': 1.15, 'sell_mult': 0.95, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2412.TW)"},
-"ssma_turn_1308": {'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 47, 'min_dist': 16, 'buy_shift': 2, 'exit_shift': 1, 'vol_window': 90, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.1, 'stop_loss': 0.0,
-                "strategy_type": "ssma_turn", "smaa_source": "Self"},                
+"RMA_1615":{'linlen': 75, 'smaalen': 232, 'rma_len': 60, 'dev_len': 45, 'factor': 40, 'buy_mult': 0.9, 'sell_mult': 2.15, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2414.TW)"},
+        
 #    "SSMA_turn 1": {
 #                "linlen": 15,"smaalen": 40,"factor": 40.0,"prom_factor": 70,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,
 #                "vol_window": 40,"quantile_win": 65,"signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,
@@ -139,6 +137,13 @@ param_presets = {
 }
 setup_logging()  # 初始化統一日誌設定
 logger = logging.getLogger("SSSv095b2")  # 使用專屬 logger
+# 新增：設置 log 檔案 handler（如尚未設置）
+if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+    file_handler = logging.FileHandler("backtest_trade_records.log", encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 from functools import wraps
 import pickle
 @dataclass
@@ -1082,6 +1087,7 @@ def backtest_unified(
                 'shares': sell_shares,
                 'return': trade_ret
             })
+            #logger.info(f"TRADE | type={'sell' if scheduled_sell[i] else 'sell_forced'} | signal_date={today} | trade_date={exit_date} | price={exit_price} | shares={sell_shares} | return={trade_ret}")
             signals.append({'signal_date': today, 'type': 'sell' if scheduled_sell[i] else 'sell_forced', 'price': today_close})
             in_pos = False
             last_trade_idx = i
@@ -1116,6 +1122,7 @@ def backtest_unified(
                     'price': entry_price,
                     'shares': shares
                 })
+                #logger.info(f"TRADE | type=buy | signal_date={today} | trade_date={entry_date} | price={entry_price} | shares={shares}")
                 signals.append({'signal_date': today, 'type': 'buy', 'price': today_close})
                 if strategy_type == 'ssma_turn':
                     buy_idx += 1
@@ -1153,6 +1160,7 @@ def backtest_unified(
             'shares': sell_shares,
             'return': trade_ret
         })
+        #logger.info(f"TRADE | type=sell_forced | signal_date={exit_date} | trade_date={exit_date} | price={exit_price} | shares={sell_shares} | return={trade_ret}")
         signals.append({'signal_date': exit_date, 'type': 'sell_forced', 'price': exit_price})
         accum_interest = 0.0
 
@@ -1297,14 +1305,6 @@ def plot_indicators(df_ind: pd.DataFrame, strategy_type: str, trades_df: pd.Data
 def plot_equity_cash(trades_df: pd.DataFrame, price_df: pd.DataFrame, initial_cash: float = 100000) -> go.Figure:
     """
     繪製每日浮動權益和現金曲線,確保連續且反映收盤價變化.
-
-    Args:
-        trades_df (pd.DataFrame): 交易記錄,包含 trade_date, type, price, shares.
-        price_df (pd.DataFrame): 價格數據,包含 close 欄位.
-        initial_cash (float): 初始現金,預設 100000.
-
-    Returns:
-        go.Figure: Plotly 圖表物件,包含浮動權益和現金曲線.
     """
     if trades_df.empty or price_df.empty:
         logger.warning("交易或價格數據為空,無法繪製權益曲線.")
@@ -1314,6 +1314,11 @@ def plot_equity_cash(trades_df: pd.DataFrame, price_df: pd.DataFrame, initial_ca
     dates = price_df.index
     cash_series = pd.Series(initial_cash, index=dates, dtype=float)
     shares_series = pd.Series(0, index=dates, dtype=float)
+
+    # 型別自動對齊：將 trade_date 轉為 Timestamp
+    if 'trade_date' in trades_df.columns:
+        trades_df = trades_df.copy()
+        trades_df['trade_date'] = pd.to_datetime(trades_df['trade_date'])
 
     # 2. 逐筆交易更新持股和現金
     for _, row in trades_df.iterrows():
@@ -1634,11 +1639,17 @@ smaa_source=smaa_source
                                 use_container_width=True, key=f"indicators_{strategy}")                
                 st.subheader("交易明細")
                 trade_df = result['trade_df'].copy()
+                # 只顯示日期
+                for col in ['signal_date', 'trade_date']:
+                    if col in trade_df.columns:
+                        trade_df[col] = pd.to_datetime(trade_df[col]).dt.date
+                # price, return 只顯示兩位小數
+                if 'price' in trade_df.columns:
+                    trade_df['price'] = trade_df['price'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
                 if 'return' in trade_df.columns:
-                    trade_df['return'] = trade_df['return'].apply(
-                        lambda x: "-" if pd.isna(x) else f"{x:.2%}"
-                    )
+                    trade_df['return'] = trade_df['return'].apply(lambda x: "-" if pd.isna(x) else f"{x:.2%}")
                 st.dataframe(trade_df)
+                st.markdown("**所有下單日皆為信號日的隔天（T+1），本表 signal_date=trade_date 代表信號日即下單日**")
             else:
                 st.warning(f"{strategy} 策略未產生任何交易,可能是參數設置或數據問題.")
 
@@ -1659,6 +1670,19 @@ smaa_source=smaa_source
                                          marker=dict(symbol='x', size=8, color=colors[i % len(colors)])))
         fig.update_layout(title=f'{ticker} 所有策略買賣點比較',
                           xaxis_title='Date', yaxis_title='股價', template='plotly_white')
+        fig.update_layout(
+            legend=dict(
+                x=1.05,
+                y=1,
+                xanchor='left',
+                yanchor='top',
+                bordercolor="Black",
+                borderwidth=1,
+                bgcolor="white",
+                itemsizing='constant',
+                orientation='v'
+            )
+        )
         st.plotly_chart(fig, use_container_width=True, key="buy_sell_comparison")
         
         st.subheader("績效比較表")

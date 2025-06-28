@@ -110,11 +110,11 @@ def compute_param_correlations(optuna_results_df, strategy, data_source):
 
 def pick_topN_by_diversity(trials, metric_keys, top_n=5):
     """
-    基於性能指標的多樣性 top N 試驗選擇，只使用 num_trades、excess_return_stress 和 avg_hold_days
+    基於性能指標的多樣性 top N 試驗選擇，應用四捨五入規則
     
     Args:
         trials: 試驗列表，每個試驗包含 score 和指定指標
-        metric_keys: 用於分組的指標鍵（實際只使用 num_trades、excess_return_stress、avg_hold_days）
+        metric_keys: 用於分組的指標鍵
         top_n: 最終選取的試驗數量
     
     Returns:
@@ -125,42 +125,29 @@ def pick_topN_by_diversity(trials, metric_keys, top_n=5):
     # 轉換為 DataFrame
     df = pd.DataFrame(trials)
     
-    # 只使用三個關鍵指標
-    key_metrics = ['num_trades', 'excess_return_stress', 'avg_hold_days']
-    logger.info(f"使用關鍵指標: {key_metrics}")
+    # 四捨五入規則
+    round_rules = {
+        'min_wf_return': 1,          # 小數點後一位
+        'avg_stress_return': 2,      # 小數點後三位
+        'stability_score': 1,        # 小數點後二位
+        'robust_score': 2,           # 小數點後三位
+        'excess_return_stress': 2,   # 小數點後三位
+        'stress_mdd': 2,             # 小數點後三位
+        'pbo_score': 2,              # 小數點後二位
+        'sra_p_value': 2,            # 小數點後三位
+        'avg_hold_days': 1           # 整數位
+    }
     
-    # 檢查必要指標是否存在
-    missing_metrics = [metric for metric in key_metrics if metric not in df.columns]
-    if missing_metrics:
-        logger.warning(f"缺少指標: {missing_metrics}，將使用可用的指標")
-        key_metrics = [metric for metric in key_metrics if metric in df.columns]
+    logger.info(f"四捨五入規則: {round_rules}")
     
-    if not key_metrics:
-        logger.error("沒有可用的關鍵指標，無法進行篩選")
-        return []
+    # 應用四捨五入
+    for key in metric_keys:
+        if key in round_rules:
+            df[f'rounded_{key}'] = df[key].round(round_rules[key])
+            logger.info(f"指標 {key}: 原始值範圍 [{df[key].min():.3f}, {df[key].max():.3f}], 四捨五入後範圍 [{df[f'rounded_{key}'].min():.3f}, {df[f'rounded_{key}'].max():.3f}]")
     
-    # 針對不同指標特性的分組處理
-    for metric in key_metrics:
-        if metric not in df.columns:
-            continue
-            
-        if metric == 'num_trades':
-            # num_trades: 分級處理，每5次為一組，避免過於細碎
-            df[f'grouped_{metric}'] = (df[metric] // 5) * 5
-            logger.info(f"指標 {metric}: 原始值範圍 [{df[metric].min()}, {df[metric].max()}], 分級後範圍 [{df[f'grouped_{metric}'].min()}, {df[f'grouped_{metric}'].max()}]")
-            
-        elif metric == 'excess_return_stress':
-            # excess_return_stress: 四捨五入到小數點後一位
-            df[f'grouped_{metric}'] = df[metric].round(1)
-            logger.info(f"指標 {metric}: 原始值範圍 [{df[metric].min():.3f}, {df[metric].max():.3f}], 四捨五入後範圍 [{df[f'grouped_{metric}'].min():.1f}, {df[f'grouped_{metric}'].max():.1f}]")
-            
-        elif metric == 'avg_hold_days':
-            # avg_hold_days: 四捨五入到小數點後一位
-            df[f'grouped_{metric}'] = df[metric].round(1)
-            logger.info(f"指標 {metric}: 原始值範圍 [{df[metric].min():.3f}, {df[metric].max():.3f}], 四捨五入後範圍 [{df[f'grouped_{metric}'].min():.1f}, {df[f'grouped_{metric}'].max():.1f}]")
-    
-    # 按分組後的指標創建組別標識
-    group_cols = [f'grouped_{metric}' for metric in key_metrics]
+    # 按四捨五入後的指標分組
+    group_cols = [f'rounded_{key}' for key in metric_keys]
     df['group'] = df[group_cols].astype(str).agg('_'.join, axis=1)
     
     # 統計分組情況
@@ -204,8 +191,8 @@ def pick_topN_by_diversity(trials, metric_keys, top_n=5):
     for i, trial in enumerate(chosen_trials):
         logger.info(f"  {i+1}. 試驗 {trial['trial_number']}: score={trial['score']:.3f}")
         # 顯示關鍵指標
-        key_metrics_values = {k: trial.get(k, 'N/A') for k in key_metrics}
-        logger.info(f"     關鍵指標: {key_metrics_values}")
+        key_metrics = {k: trial.get(k, 'N/A') for k in ['min_wf_return', 'avg_stress_return', 'stability_score']}
+        logger.info(f"     關鍵指標: {key_metrics}")
     
     return chosen_trials
 
@@ -601,7 +588,8 @@ for strategy in optuna_results['strategy'].unique():
         
         # 定義性能指標用於多樣性篩選
         metric_keys = [
-            'num_trades', 'excess_return_stress', 'avg_hold_days'
+            'min_wf_return', 'avg_stress_return', 'stability_score', 'robust_score',
+            'excess_return_stress', 'stress_mdd', 'pbo_score', 'sra_p_value', 'avg_hold_days'
         ]
         
         logger.info(f"策略 {strategy} 使用性能指標: {metric_keys}")
@@ -935,6 +923,31 @@ if st.button("🚀 執行回測與分析", type="primary"):
                     **risk_adjusted_metrics  # 添加風險調整指標
                 }
                 
+                # 修正勝率計算
+                trades_df = result.get('trades_df', pd.DataFrame())
+                logger.info(f"策略 {name} 的 trades_df 形狀: {trades_df.shape}")
+                logger.info(f"策略 {name} 的 trades_df 欄位: {list(trades_df.columns)}")
+
+                if not trades_df.empty and 'ret' in trades_df.columns:
+                    winning_trades = trades_df[trades_df['ret'] > 0]
+                    total_trades = len(trades_df)
+                    winning_count = len(winning_trades)
+                    win_rate = winning_count / total_trades if total_trades > 0 else 0
+                    result['metrics']['win_rate'] = win_rate
+                    logger.info(f"策略 {name} 勝率計算: 總交易數={total_trades}, 獲利交易數={winning_count}, 勝率={win_rate:.2%}")
+                    
+                    # 添加詳細的交易記錄日誌
+                    if total_trades > 0:
+                        logger.info(f"策略 {name} 交易報酬率統計:")
+                        logger.info(f"  最小報酬率: {trades_df['ret'].min():.4f}")
+                        logger.info(f"  最大報酬率: {trades_df['ret'].max():.4f}")
+                        logger.info(f"  平均報酬率: {trades_df['ret'].mean():.4f}")
+                        logger.info(f"  正報酬交易: {winning_count} 筆")
+                        logger.info(f"  負報酬交易: {total_trades - winning_count} 筆")
+                else:
+                    result['metrics']['win_rate'] = 0
+                    logger.warning(f"策略 {name} 的 trades_df 為空或缺少 'ret' 欄位")
+                
                 # 修正卡瑪比率計算
                 if result['metrics']['max_drawdown'] != 0:
                     result['metrics']['calmar_ratio'] = result['metrics']['annual_return'] / abs(result['metrics']['max_drawdown'])
@@ -1234,19 +1247,6 @@ if st.button("🚀 執行回測與分析", type="primary"):
                         column_names.append('壓力MDD分數')
                     
                     avg_pr.columns = column_names
-                    # 計算綜合分數：走查報酬*3+壓力報酬+走查MDD+壓力MDD
-                    avg_pr['綜合分數'] = 0.0
-                    
-                    # 根據實際存在的欄位計算綜合分數
-                    if '走查報酬率分數' in avg_pr.columns:
-                        avg_pr['綜合分數'] += avg_pr['走查報酬率分數'] * 3
-                    if '壓力報酬率分數' in avg_pr.columns:
-                        avg_pr['綜合分數'] += avg_pr['壓力報酬率分數']
-                    if '走查MDD分數' in avg_pr.columns:
-                        avg_pr['綜合分數'] += avg_pr['走查MDD分數']
-                    if '壓力MDD分數' in avg_pr.columns:
-                        avg_pr['綜合分數'] += avg_pr['壓力MDD分數']
-                    
                     avg_pr['平均分數'] = avg_pr.mean(axis=1)
                 else:
                     avg_pr = pd.DataFrame()
@@ -1255,12 +1255,7 @@ if st.button("🚀 執行回測與分析", type="primary"):
                 stress_hedge_counts = pd.DataFrame(stress_hedge_counts).T.sum()
                 total_hedge_counts = wf_hedge_counts + stress_hedge_counts
                 summary_df = pd.concat([avg_pr, wf_hedge_counts.to_frame('走查避險次數'), stress_hedge_counts.to_frame('壓力避險次數'), total_hedge_counts.to_frame('總避險次數')], axis=1)
-                
-                # 定義需要格式化的欄位
-                score_columns = [col for col in avg_pr.columns if '分數' in col]
-                hedge_columns = ['走查避險次數', '壓力避險次數', '總避險次數']
-                
-                st.dataframe(summary_df.style.format("{:.2f}", subset=score_columns).format("{:d}", subset=hedge_columns))
+                st.dataframe(summary_df.style.format("{:.2f}", subset=avg_pr.columns).format("{:d}", subset=['走查避險次數', '壓力避險次數', '總避險次數']))
 
             # 標籤頁 5: 過擬合檢測
             with tabs[4]:
@@ -1422,10 +1417,6 @@ if st.button("🚀 執行回測與分析", type="primary"):
                 if 'metrics' in result and result['metrics']:
                     metrics = result['metrics']
                     
-                    # 添加調試信息
-                    win_rate_value = metrics.get('win_rate', 0)
-                    logger.info(f"策略 {name} 的勝率值: {win_rate_value}, 類型: {type(win_rate_value)}")
-                    
                     row = {
                         "策略": name,
                         "總報酬率": metrics.get('total_return', 0),
@@ -1434,7 +1425,7 @@ if st.button("🚀 執行回測與分析", type="primary"):
                         "夏普比率": metrics.get('sharpe_ratio', 0),
                         "卡瑪比率": metrics.get('calmar_ratio', 0),
                         "交易次數": metrics.get('num_trades', 0),
-                        "勝率": win_rate_value
+                        "勝率": metrics.get('win_rate', 0)
                     }
                     summary_data.append(row)
             
@@ -1489,5 +1480,4 @@ if st.button("🚀 執行回測與分析", type="primary"):
                 st.code(log_content, language="text")
             else:
                 st.text("日誌檔案不存在")
-
 

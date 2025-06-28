@@ -3,7 +3,7 @@ __all__ = [
     "compute_ssma_turn_combined", "backtest_unified","build_smaa_path",
     "compute_backtest_for_periods", "calculate_metrics",
 ]
-VERSION = "095b2"
+VERSION = "094a1"
 
 # === 系統與標準函式庫 ===
 import os
@@ -55,18 +55,22 @@ TAX_RATE = 0.003 # 賣出交易稅率 = 0.3%
 
 # 預計算 SMAA
 param_presets = {
-    "Single 1": {"linlen": 60, "factor": 40, "smaalen": 20, "devwin": 40, "buy_mult": 0.44, "sell_mult": 1.55, "strategy_type": "single", "smaa_source": "Self"},
-    "Single 2": {"linlen": 90, "factor": 40, "smaalen": 30, "devwin": 30, "buy_mult": 1.45, "sell_mult": 1.25,"stop_loss":0.2, "strategy_type": "single", "smaa_source": "Self"},
-    "Single 3": {"linlen": 80, "factor": 10, "smaalen": 60, "devwin": 20, "buy_mult": 0.4, "sell_mult": 1.5, "strategy_type": "single", "smaa_source": "Self"},
-    #"Dual-Scale": {"linlen": 60, "factor": 40, "smaalen": 20, "short_win": 40, "long_win": 100, "buy_mult": 0.3, "sell_mult": 1.3, "strategy_type": "dual", "smaa_source": "Self"},
-    "RMA": {"linlen": 41, "factor": 45, "smaalen": 37, "rma_len": 55, "dev_len": 40, "buy_mult": 1.7, "sell_mult": 1.65, "stop_loss": 0.09,  "strategy_type": "RMA", "smaa_source": "Self"},
-    
-    "SSMA_turn 0": {"linlen": 25, "smaalen": 85, "factor": 80.0, "prom_factor": 9, "min_dist": 8, "buy_shift": 0, "exit_shift": 6, "vol_window": 90, "quantile_win": 65, "signal_cooldown_days": 7, "buy_mult": 0.15, "sell_mult": 0.1, "stop_loss": 0.13, 
+
+"Single 2": {"linlen": 90, "factor": 40, "smaalen": 30, "devwin": 30, "buy_mult": 1.45, "sell_mult": 1.25,"stop_loss":0.2, "strategy_type": "single", "smaa_source": "Self"},
+"Single 3": {"linlen": 80, "factor": 10, "smaalen": 60, "devwin": 20, "buy_mult": 0.4, "sell_mult": 1.5, "strategy_type": "single", "smaa_source": "Self"},
+"ssma_turn_1308": {'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 47, 'min_dist': 16, 'buy_shift': 2, 'exit_shift': 1, 'vol_window': 90, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.1, 'stop_loss': 0.0,
+                "strategy_type": "ssma_turn", "smaa_source": "Self"},        
+"ssma_turn_1939":{'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 48, 'min_dist': 14, 'buy_shift': 1, 'exit_shift': 1, 'vol_window': 80, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.6, 'stop_loss': 0.2,
+                "strategy_type": "ssma_turn", "smaa_source": "Self"},    
+"SSMA_turn 0": {"linlen": 25, "smaalen": 85, "factor": 80.0, "prom_factor": 9, "min_dist": 8, "buy_shift": 0, "exit_shift": 6, "vol_window": 90, "quantile_win": 65, "signal_cooldown_days": 7, "buy_mult": 0.15, "sell_mult": 0.1, "stop_loss": 0.13, 
                 "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
-    "SSMA_turn 1": {
-                "linlen": 15,"smaalen": 40,"factor": 40.0,"prom_factor": 70,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,
-                "vol_window": 40,"quantile_win": 65,"signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,
-                "strategy_type": "ssma_turn","smaa_source": "Self"},
+"RMA_1921": {'linlen': 167, 'smaalen': 107, 'rma_len': 35, 'dev_len': 80, 'factor': 40, 'buy_mult': 1.15, 'sell_mult': 0.95, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2412.TW)"},
+"RMA_1615":{'linlen': 75, 'smaalen': 232, 'rma_len': 60, 'dev_len': 45, 'factor': 40, 'buy_mult': 0.9, 'sell_mult': 2.15, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2414.TW)"},
+        
+#    "SSMA_turn 1": {
+#                "linlen": 15,"smaalen": 40,"factor": 40.0,"prom_factor": 70,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,
+#                "vol_window": 40,"quantile_win": 65,"signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,
+#                "strategy_type": "ssma_turn","smaa_source": "Self"},
 "SSMA_turn 2": {
     "linlen": 10,
     "smaalen": 35,
@@ -84,6 +88,27 @@ param_presets = {
     "strategy_type": "ssma_turn",
     "smaa_source": "Factor (^TWII / 2414.TW)"
 },
+
+#"SSMA_turn 4": {
+#    "linlen": 10,
+#    "smaalen": 35,
+#    "factor": 40.0,
+#    "prom_factor": 68,
+#    "min_dist": 8,
+#    "buy_shift": 6,
+#    "exit_shift": 0,
+#    "vol_window": 40,
+#    "quantile_win": 65,
+#    "signal_cooldown_days": 10,
+#    "buy_mult": 1.6,
+#    "sell_mult": 2.2,
+#    "stop_loss": 0.15,
+#    "strategy_type": "ssma_turn",
+#    "smaa_source": "Factor (^TWII / 2414.TW)"
+#},
+
+
+
 "SSMA_turn 3": {
     "linlen": 20,
     "smaalen": 40,
@@ -101,23 +126,13 @@ param_presets = {
     "strategy_type": "ssma_turn",
     "smaa_source": "Self"
 },
-"SSMA_turn 4": {
-    "linlen": 10,
-    "smaalen": 35,
-    "factor": 40.0,
-    "prom_factor": 68,
-    "min_dist": 8,
-    "buy_shift": 6,
-    "exit_shift": 0,
-    "vol_window": 40,
-    "quantile_win": 65,
-    "signal_cooldown_days": 10,
-    "buy_mult": 1.6,
-    "sell_mult": 2.2,
-    "stop_loss": 0.15,
-    "strategy_type": "ssma_turn",
-    "smaa_source": "Factor (^TWII / 2414.TW)"
-},
+"single_1939": {'linlen': 64, 'smaalen': 132, 'devwin': 20, 'factor': 40, 'buy_mult': 0.1, 'sell_mult': 1.75, 'stop_loss': 0.4, 'prom_factor': 0.5, 'min_dist': 5, "strategy_type": "single", "smaa_source": "Self"},
+"ssma_turn_1994": {'linlen': 145, 'smaalen': 25, 'factor': 40.0, 'prom_factor': 55, 'min_dist': 6, 'buy_shift': 0, 'exit_shift': 1, 'vol_window': 70, 'quantile_win': 15, 'signal_cooldown_days': 5, 'buy_mult': 1.2, 'sell_mult': 1.1, 'stop_loss': 0.4,
+                "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2412.TW)"},
+
+"ssma_turn_1679": {'linlen': 60, 'smaalen': 225, 'factor': 40.0, 'prom_factor': 27, 'min_dist': 5, 'buy_shift': 4, 'exit_shift': 7, 'vol_window': 65, 'quantile_win': 165, 'signal_cooldown_days': 7, 'buy_mult': 0.6, 'sell_mult': 1.7, 'stop_loss': 0.1,
+                "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
+
 
 }
 setup_logging()  # 初始化統一日誌設定
@@ -767,21 +782,41 @@ def compute_ssma_turn_combined(
         logger.warning(f"最終 df_ind 為空,可能是 SMAA 數據不足,策略: ssma_turn, linlen={linlen}, smaalen={smaalen}, valid_smaa={len(smaa.dropna())}")
     return df_ind.dropna(), buy_dates, sell_dates
 
-def calculate_metrics(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], df_ind: pd.DataFrame) -> Dict:
+def calculate_trade_mmds(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], equity_curve: pd.Series) -> List[float]:
+    """
+    計算每筆持有期間的最大回撤（MMD）。
+    Args:
+        trades: 交易記錄,包含 entry_date, return, exit_date。
+        equity_curve: 全部回測期間的每日資產淨值。
+    Returns:
+        List[float]: 每筆持有期間的最大回撤。
+    """
+    mmds = []
+    for entry_date, _, exit_date in trades:
+        # 取出持有期間的 equity
+        period_equity = equity_curve.loc[entry_date:exit_date]
+        if len(period_equity) < 2:
+            mmds.append(0.0)
+            continue
+        roll_max = period_equity.cummax()
+        drawdown = period_equity / roll_max - 1
+        mmds.append(drawdown.min())
+    return mmds
+
+def calculate_metrics(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], df_ind: pd.DataFrame, equity_curve: pd.Series = None) -> Dict:
     """
     計算回測績效指標.
-    
     Args:
         trades: 交易記錄,包含日期和報酬率.
         df_ind: 指標數據 DataFrame,包含交易日索引.
-    
+        equity_curve: 全部回測期間的每日資產淨值（可選, 若要計算持有期間MMD需提供）
     Returns:
         Dict: 包含總回報率、年化回報率、最大回撤等指標.
     """
     metrics = {
         'total_return': 0.0,
         'annual_return': 0.0,
-        'max_drawdown': 0.0,
+        'max_drawdown': 0.0,  # 這裡之後會直接用 max_mmd 覆蓋
         'max_drawdown_duration': 0,
         'calmar_ratio': np.nan,
         'num_trades': 0,
@@ -796,8 +831,9 @@ def calculate_metrics(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], df
         'avg_holding_period': np.nan,# 新增
         'annualized_volatility': np.nan,# 新增
         'profit_factor': np.nan,# 新增 
+        # 'avg_mmd': np.nan, # 不再需要
+        # 'max_mmd': np.nan, # 不再需要單獨欄位
     }
-    
     if not trades:
         return metrics
     
@@ -810,18 +846,18 @@ def calculate_metrics(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], df
     metrics['total_return'] = trade_metrics['equity'].iloc[-1] - 1
     years = max((trade_metrics.index[-1] - trade_metrics.index[0]).days / 365.25, 1)
     metrics['annual_return'] = (1 + metrics['total_return']) ** (1 / years) - 1
-    metrics['max_drawdown'] = daily_drawdown.min()
+    # metrics['max_drawdown'] = daily_drawdown.min() # 不再用這個
     dd_series = daily_drawdown < 0
     dd_dur = max((dd_series.groupby((~dd_series).cumsum()).cumcount() + 1).max(), 0) if dd_series.any() else 0
     metrics['max_drawdown_duration'] = dd_dur
-    metrics['calmar_ratio'] = metrics['annual_return'] / abs(metrics['max_drawdown']) if metrics['max_drawdown'] < 0 else np.nan
+    # metrics['calmar_ratio'] = metrics['annual_return'] / abs(metrics['max_drawdown']) if metrics['max_drawdown'] < 0 else np.nan
     metrics['num_trades'] = len(trade_metrics)
     metrics['win_rate'] = (trade_metrics['return'] > 0).sum() / metrics['num_trades'] if metrics['num_trades'] > 0 else 0
     metrics['avg_win'] = trade_metrics[trade_metrics['return'] > 0]['return'].mean() if metrics['win_rate'] > 0 else np.nan
     metrics['avg_loss'] = trade_metrics[trade_metrics['return'] < 0]['return'].mean() if metrics['win_rate'] < 1 else np.nan
     metrics['payoff_ratio'] = abs(metrics['avg_win'] / metrics['avg_loss']) if metrics['avg_loss'] != 0 and not np.isnan(metrics['avg_win']) else np.nan
     
-    # 計算每日報酬率與波動率
+    # 新增:計算每日報酬率與波動率
     daily_dates = df_ind.index.intersection(pd.date_range(start=trade_metrics.index.min(), end=trade_metrics.index.max(), freq='B'))
     daily_equity = pd.Series(index=daily_dates, dtype=float)
     for date, row in trade_metrics.iterrows():
@@ -848,6 +884,13 @@ def calculate_metrics(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], df
     total_profits = trade_metrics[trade_metrics['return'] > 0]['return'].sum()
     total_losses = abs(trade_metrics[trade_metrics['return'] < 0]['return'].sum())
     metrics['profit_factor'] = total_profits / total_losses if total_losses != 0 else np.nan
+
+    # 新增:計算每筆持有期間MMD，並直接用 max_mmd 覆蓋 max_drawdown
+    if equity_curve is not None:
+        mmds = calculate_trade_mmds(trades, equity_curve)
+        if mmds:
+            metrics['max_drawdown'] = float(np.min(mmds)) # drawdown為負值,最小值為最大跌幅
+            metrics['calmar_ratio'] = metrics['annual_return'] / abs(metrics['max_drawdown']) if metrics['max_drawdown'] < 0 else np.nan
 
     return metrics
 
@@ -1119,7 +1162,7 @@ def backtest_unified(
     trade_df = pd.DataFrame(trade_records)
     trades_df = pd.DataFrame(trades, columns=['entry_date', 'ret', 'exit_date'])
     signals_df = pd.DataFrame(signals)
-    metrics = calculate_metrics(trades, df_ind)
+    metrics = calculate_metrics(trades, df_ind, equity_curve)
 
     logger.info(f"{strategy_type} 回測結果: 總報酬率 = {metrics.get('total_return', 0):.2%}, 交易次數={metrics.get('num_trades', 0)}")
     return {'trades': trades, 'trade_df': trade_df, 'trades_df': trades_df, 'signals_df': signals_df, 'metrics': metrics, 'equity_curve': equity_curve}
@@ -1582,11 +1625,11 @@ smaa_source=smaa_source
             if result['trades']:
                 st.plotly_chart(plot_stock_price(df_raw, result['trade_df'], ticker), 
                                 use_container_width=True, key=f"stock_price_{strategy}")
-                st.plotly_chart(plot_indicators(df_ind, strategy_type, result['trade_df'], params), 
-                                use_container_width=True, key=f"indicators_{strategy}")
+
                 st.plotly_chart(plot_equity_cash(result['trade_df'], df_raw), 
                                 use_container_width=True, key=f"equity_cash_{strategy}")
-                
+                st.plotly_chart(plot_indicators(df_ind, strategy_type, result['trade_df'], params), 
+                                use_container_width=True, key=f"indicators_{strategy}")                
                 st.subheader("交易明細")
                 trade_df = result['trade_df'].copy()
                 if 'return' in trade_df.columns:
