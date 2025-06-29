@@ -6,6 +6,10 @@ import plotly.graph_objects as go
 import json
 import io
 from dash.dependencies import ALL
+import shutil
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
 
 from SSSv095b2 import (
     param_presets, load_data, compute_single, compute_dual, compute_RMA,
@@ -21,7 +25,6 @@ except ImportError:
 
 default_tickers = ["00631L.TW", "2330.TW", "AAPL", "VOO"]
 strategy_names = list(param_presets.keys())
-smaa_sources = ["Self", "Factor (^TWII / 2412.TW)", "Factor (^TWII / 2414.TW)"]
 
 theme_list = ['theme-dark', 'theme-light', 'theme-blue']
 
@@ -42,7 +45,20 @@ app.layout = html.Div([
     html.Div([
         html.Button(id='theme-toggle', n_clicks=0, children='🌑 深色主題', className='btn btn-secondary main-header-bar'),
         html.Button(id='sidebar-toggle', n_clicks=0, children='📋 隱藏側邊欄', className='btn btn-secondary main-header-bar ms-2'),
+        html.Button(id='history-btn', n_clicks=0, children='📚 版本沿革', className='btn btn-secondary main-header-bar ms-2'),
     ], className='header-controls'),
+    
+    # 版本沿革模態框
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("各版本沿革紀錄")),
+        dbc.ModalBody([
+            dcc.Markdown(get_version_history_html(), dangerously_allow_html=True)
+        ], className='version-history-modal-body'),
+        dbc.ModalFooter(
+            dbc.Button("關閉", id="history-close", className="ms-auto", n_clicks=0)
+        ),
+    ], id="history-modal", size="lg", is_open=False),
+    
     dbc.Container([
         dbc.Row([
             dbc.Col([
@@ -71,12 +87,6 @@ app.layout = html.Div([
                         options=[{'label': s, 'value': s} for s in strategy_names],
                         value=strategy_names[0]
                     ),
-                    html.Label("SMAA 數據源"),
-                    dcc.Dropdown(
-                        id='smaa-source-dropdown',
-                        options=[{'label': s, 'value': s} for s in smaa_sources],
-                        value="Self"
-                    ),
                     html.Div(id='strategy-param-area'),  # 動態策略參數
                     html.Br(),
                     html.Button("🚀 一鍵執行所有回測", id='run-btn', n_clicks=0, className="btn btn-primary mb-2"),
@@ -89,8 +99,7 @@ app.layout = html.Div([
                     value='backtest',
                     children=[
                         dcc.Tab(label="策略回測", value="backtest"),
-                        dcc.Tab(label="所有策略買賣點比較", value="compare"),
-                        dcc.Tab(label="各版本沿革紀錄", value="history")
+                        dcc.Tab(label="所有策略買賣點比較", value="compare")
                     ],
                     className='main-tabs-bar'
                 ),
@@ -170,28 +179,41 @@ def update_strategy_params(strategy):
         Input('discount-slider', 'value'),
         Input('cooldown-bars', 'value'),
         Input('bad-holding', 'value'),
-        Input('smaa-source-dropdown', 'value'),
         Input('strategy-dropdown', 'value'),
         Input({'type': 'param-input', 'param': ALL}, 'value'),
         Input({'type': 'param-input', 'param': ALL}, 'id'),
     ],
     State('backtest-store', 'data')
 )
-def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, cooldown, bad_holding, smaa_source, strategy, param_values, param_ids, stored_data):
+def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, cooldown, bad_holding, strategy, param_values, param_ids, stored_data):
+    # 修改快取清理邏輯，避免與其他程式衝突
+    # 只清理 SMAA 快取，不清空整個 cache 目錄
+    smaa_cache_dir = "cache/cache_smaa"
+    if os.path.exists(smaa_cache_dir):
+        try:
+            # 只清理 SMAA 快取文件，保留目錄結構
+            for file_path in Path(smaa_cache_dir).glob("*.npy"):
+                file_path.unlink()
+            print(f"已清理 SMAA 快取: {smaa_cache_dir}")
+        except Exception as e:
+            print(f"清理 SMAA 快取失敗: {e}")
+    
     ctx_trigger = ctx.triggered_id
     # 只在 auto-run 為 True 或按鈕被點擊時運算
     if not auto_run and ctx_trigger != 'run-btn':
         return stored_data
-    params = {id['param']: v for id, v in zip(param_ids, param_values)}
-    params['strategy_type'] = param_presets[strategy]['strategy_type']
-    params['smaa_source'] = smaa_source
-    df_raw, df_factor = load_data(ticker, start_date, end_date if end_date else None, smaa_source=smaa_source)
+    
     results = {}
+    
     for strat in strategy_names:
+        # 只使用 param_presets 中的參數
         strat_params = param_presets[strat].copy()
-        strat_params.update(params if strat == strategy else {})
         strat_type = strat_params["strategy_type"]
         smaa_src = strat_params.get("smaa_source", "Self")
+        
+        # 為每個策略載入對應的數據
+        df_raw, df_factor = load_data(ticker, start_date, end_date if end_date else None, smaa_source=smaa_src)
+        
         if strat_type == 'ssma_turn':
             calc_keys = ['linlen', 'factor', 'smaalen', 'prom_factor', 'min_dist', 'buy_shift', 'exit_shift', 'vol_window', 'signal_cooldown_days', 'quantile_win']
             ssma_params = {k: v for k, v in strat_params.items() if k in calc_keys}
@@ -224,7 +246,12 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                 for t in result['trades']
             ]
         results[strat] = result
-    df_raw_json = df_raw.to_json(date_format='iso')
+    
+    # 使用第一個策略的數據作為主要顯示數據
+    first_strat = list(results.keys())[0] if results else strategy_names[0]
+    first_smaa_src = param_presets[first_strat].get("smaa_source", "Self")
+    df_raw_main, _ = load_data(ticker, start_date, end_date if end_date else None, smaa_source=first_smaa_src)
+    df_raw_json = df_raw_main.to_json(date_format='iso')
     return json.dumps({'results': results, 'df_raw': df_raw_json, 'ticker': ticker})
 
 # --------- 主頁籤內容顯示 ---------
@@ -370,7 +397,12 @@ def update_tab(data, tab, selected_strategy, theme):
                 html.Br(),
                 dcc.Graph(figure=fig1, config={'displayModeBar': True}, className='main-metrics-graph'),
                 dcc.Graph(figure=fig2, config={'displayModeBar': True}, className='main-cash-graph'),
-                html.H5("交易明細"),
+                # 將交易明細標題與說明合併為同一行
+                html.Div([
+                    html.H5("交易明細", style={"marginBottom": 0, "marginRight": "12px"}),
+                    html.Div("實際下單日為信號日的隔天（S+1），修改代碼會影響很多層面，暫不修改", 
+                             style={"fontWeight": "bold", "fontSize": "16px"})
+                ], style={"display": "flex", "alignItems": "center", "marginTop": "16px"}),
                 dash_table.DataTable(
                     columns=[{"name": i, "id": i} for i in display_df.columns],
                     data=display_df.to_dict('records'),
@@ -378,7 +410,7 @@ def update_tab(data, tab, selected_strategy, theme):
                     style_cell={'textAlign': 'center'},
                     id={'type': 'strategy-table', 'strategy': strategy}
                 ),
-                html.Div("**所有下單日皆為信號日的隔天（T+1），本表 signal_date=trade_date 代表信號日即下單日**", style={"fontWeight": "bold", "marginTop": "8px", "color": font_color}),
+                
                 html.Br(),
                 html.Button("下載交易紀錄", id={'type': 'download-btn', 'strategy': strategy}),
                 dcc.Download(id={'type': 'download-trade', 'strategy': strategy})
@@ -388,9 +420,8 @@ def update_tab(data, tab, selected_strategy, theme):
         
         # 創建策略回測的子頁籤容器
         return html.Div([
-            html.H3("策略回測結果"),
-            html.Div("選擇下方頁籤查看各策略的詳細回測結果"),
-            html.Br(),
+        
+
             dcc.Tabs(
                 id='strategy-tabs',
                 value=f"strategy_{strategy_names[0]}" if strategy_names else "no_strategy",
@@ -403,6 +434,11 @@ def update_tab(data, tab, selected_strategy, theme):
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df_raw.index, y=df_raw['close'], name='Close Price', line=dict(color='dodgerblue')))
         colors = ['green', 'limegreen', 'red', 'orange', 'purple', 'blue', 'pink', 'cyan']
+        
+        # 定義策略到顏色的映射
+        strategy_colors = {strategy: colors[i % len(colors)] for i, strategy in enumerate(strategy_names)}
+        
+        # 為圖表添加買賣點
         for i, strategy in enumerate(strategy_names):
             result = results.get(strategy)
             if not result:
@@ -418,6 +454,8 @@ def update_tab(data, tab, selected_strategy, theme):
                                      marker=dict(symbol='cross', size=8, color=colors[i % len(colors)])))
             fig.add_trace(go.Scatter(x=sells['trade_date'], y=sells['price'], mode='markers', name=f'{strategy} Sell',
                                      marker=dict(symbol='x', size=8, color=colors[i % len(colors)])))
+        
+        # 更新圖表佈局
         fig.update_layout(
             title=f'{ticker} 所有策略買賣點比較',
             xaxis_title='Date', yaxis_title='股價', template=plotly_template,
@@ -428,11 +466,22 @@ def update_tab(data, tab, selected_strategy, theme):
                 itemsizing='constant', orientation='v', font=dict(color=legend_font_color)
             )
         )
+        
+        # 準備比較表格數據
         comparison_data = []
         for strategy in strategy_names:
             result = results.get(strategy)
             if not result:
                 continue
+            
+            # 讀取交易數據
+            trade_df = pd.read_json(io.StringIO(result['trade_df']))
+            if 'trade_date' in trade_df.columns:
+                trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
+            
+            # 計算詳細統計信息
+            detailed_stats = calculate_strategy_detailed_stats(trade_df, df_raw)
+            
             metrics = result['metrics']
             comparison_data.append({
                 '策略': strategy,
@@ -442,40 +491,87 @@ def update_tab(data, tab, selected_strategy, theme):
                 '卡瑪比率': f"{metrics.get('calmar_ratio', 0):.2f}",
                 '交易次數': metrics.get('num_trades', 0),
                 '勝率': f"{metrics.get('win_rate', 0):.2%}",
-                '盈虧比': f"{metrics.get('payoff_ratio', 0):.2f}"
+                '盈虧比': f"{metrics.get('payoff_ratio', 0):.2f}",
+                '平均持有天數': f"{detailed_stats['avg_holding_days']:.1f}",
+                '賣後買平均天數': f"{detailed_stats['avg_sell_to_buy_days']:.1f}",
+                '目前狀態': detailed_stats['current_status'],
+                '距離上次操作天數': f"{detailed_stats['days_since_last_action']}"
             })
+        
+        # 定義顏色調整函數
+        def adjust_color_for_theme(color, theme):
+            # 預定義顏色到 RGB 的映射
+            color_to_rgb = {
+                'green': '0, 128, 0',
+                'limegreen': '50, 205, 50', 
+                'red': '255, 0, 0',
+                'orange': '255, 165, 0',
+                'purple': '128, 0, 128',
+                'blue': '0, 0, 255',
+                'pink': '255, 192, 203',
+                'cyan': '0, 255, 255'
+            }
+            
+            rgb = color_to_rgb.get(color, '128, 128, 128')  # 默認灰色
+            
+            if theme == 'theme-dark':
+                return f'rgba({rgb}, 0.2)'  # 透明度 0.2
+            elif theme == 'theme-light':
+                return f'rgba({rgb}, 1)'    # 透明度 1
+            else:  # theme-blue
+                return f'rgba({rgb}, 0.5)'  # 透明度 0.5
+        
+        # 創建比較表格並應用條件樣式
+        compare_table = dash_table.DataTable(
+            columns=[{"name": i, "id": i} for i in comparison_data[0].keys()] if comparison_data else [],
+            data=comparison_data,
+            style_table={'overflowX': 'auto'},
+            style_cell={'textAlign': 'center'},
+            style_data_conditional=[
+                {
+                    'if': {'row_index': i},
+                    'backgroundColor': adjust_color_for_theme(strategy_colors[row['策略']], theme),
+                    'border': f'1px solid {strategy_colors[row['策略']]}'
+                } for i, row in enumerate(comparison_data)
+            ],
+            id='compare-table'
+        )
+        
         return html.Div([
             dcc.Graph(figure=fig, config={'displayModeBar': True}, className='compare-graph'),
             html.Hr(),
-            dash_table.DataTable(
-                columns=[{"name": i, "id": i} for i in comparison_data[0].keys()] if comparison_data else [],
-                data=comparison_data,
-                style_table={'overflowX': 'auto'},
-                style_cell={'textAlign': 'center'},
-                id='compare-table'
-            )
+            compare_table
         ])
-    elif tab == "history":
-        return html.Div([
-            html.H4("各版本沿革紀錄"),
-            dcc.Markdown(get_version_history_html(), dangerously_allow_html=True)
-        ], className='version-history-panel')
 
-# --------- 主題切換 ---------
+# --------- 版本沿革模態框控制和主題切換 ---------
 @app.callback(
+    Output("history-modal", "is_open"),
     Output('main-bg', 'className'),
     Output('theme-toggle', 'children'),
     Output('theme-store', 'data'),
-    Input('theme-toggle', 'n_clicks'),
-    State('theme-store', 'data')
+    [Input("history-btn", "n_clicks"), Input("history-close", "n_clicks"), Input('theme-toggle', 'n_clicks')],
+    [State("history-modal", "is_open"), State('theme-store', 'data')],
+    prevent_initial_call=True
 )
-def toggle_theme(n, theme):
-    if n is None:
-        return 'theme-dark', '🌑 深色主題', 'theme-dark'
-    themes = ['theme-dark', 'theme-light', 'theme-blue']
-    current_index = themes.index(theme)
-    next_theme = themes[(current_index + 1) % len(themes)]
-    return next_theme, get_theme_label(next_theme), next_theme
+def toggle_history_modal_and_theme(history_btn, history_close, theme_btn, is_open, current_theme):
+    ctx_trigger = ctx.triggered_id
+    
+    if ctx_trigger == "history-btn":
+        # 開啟版本沿革模態框，強制切換到深色主題
+        return True, 'theme-dark', '🌑 深色主題', 'theme-dark'
+    elif ctx_trigger == "history-close":
+        # 關閉版本沿革模態框，恢復原主題
+        return False, current_theme, get_theme_label(current_theme), current_theme
+    elif ctx_trigger == "theme-toggle":
+        # 正常的主題切換
+        if current_theme is None:
+            return is_open, 'theme-dark', '🌑 深色主題', 'theme-dark'
+        themes = ['theme-dark', 'theme-light', 'theme-blue']
+        current_index = themes.index(current_theme)
+        next_theme = themes[(current_index + 1) % len(themes)]
+        return is_open, next_theme, get_theme_label(next_theme), next_theme
+    
+    return is_open, current_theme, get_theme_label(current_theme), current_theme
 
 # --------- 下載交易紀錄 ---------
 @app.callback(
@@ -510,5 +606,88 @@ def download_trade(n_clicks, table_data, backtest_data):
     
     return [dcc.send_bytes(to_xlsx, f"{strategy}_交易紀錄.xlsx") if i > 0 else None for i in n_clicks]
 
+def calculate_strategy_detailed_stats(trade_df, df_raw):
+    """計算策略的詳細統計信息"""
+    if trade_df.empty:
+        return {
+            'avg_holding_days': 0,
+            'avg_sell_to_buy_days': 0,
+            'current_status': '未持有',
+            'days_since_last_action': 0
+        }
+    
+    # 確保日期列是 datetime 類型
+    if 'trade_date' in trade_df.columns:
+        trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
+    
+    # 按日期排序確保順序正確
+    trade_df = trade_df.sort_values('trade_date').reset_index(drop=True)
+    
+    # 計算平均持有天數（買入到賣出的天數）
+    holding_periods = []
+    for i in range(len(trade_df) - 1):
+        current_type = trade_df.iloc[i]['type']
+        next_type = trade_df.iloc[i+1]['type']
+        if current_type == 'buy' and next_type in ['sell', 'sell_forced']:
+            buy_date = trade_df.iloc[i]['trade_date']
+            sell_date = trade_df.iloc[i+1]['trade_date']
+            holding_days = (sell_date - buy_date).days
+            holding_periods.append(holding_days)
+    avg_holding_days = sum(holding_periods) / len(holding_periods) if holding_periods else 0
+    
+    # 計算賣後買平均天數（賣出到下次買入的天數）
+    sell_to_buy_periods = []
+    for i in range(len(trade_df) - 1):
+        current_type = trade_df.iloc[i]['type']
+        next_type = trade_df.iloc[i+1]['type']
+        if current_type in ['sell', 'sell_forced'] and next_type == 'buy':
+            sell_date = trade_df.iloc[i]['trade_date']
+            buy_date = trade_df.iloc[i+1]['trade_date']
+            days_between = (buy_date - sell_date).days
+            sell_to_buy_periods.append(days_between)
+    avg_sell_to_buy_days = sum(sell_to_buy_periods) / len(sell_to_buy_periods) if sell_to_buy_periods else 0
+    
+    # 取得最後一筆操作
+    last_trade = trade_df.iloc[-1] if not trade_df.empty else None
+    if not df_raw.empty:
+        current_date = df_raw.index[-1]
+        if isinstance(current_date, str):
+            current_date = pd.to_datetime(current_date)
+    else:
+        current_date = datetime.now()
+    
+    if last_trade is not None:
+        last_type = last_trade['type']
+        last_date = last_trade['trade_date']
+        if last_type == 'buy':
+            current_status = '持有'
+            days_since_last_action = (current_date - last_date).days
+        elif last_type == 'sell':
+            current_status = '未持有'
+            days_since_last_action = (current_date - last_date).days
+        elif last_type == 'sell_forced':
+            # 狀態為持有，天數為目前日期減去最近一筆 buy 日期
+            current_status = '持有'
+            # 往前找最近一筆 buy
+            last_buy = trade_df[trade_df['type'] == 'buy']
+            if not last_buy.empty:
+                last_buy_date = last_buy.iloc[-1]['trade_date']
+                days_since_last_action = (current_date - last_buy_date).days
+            else:
+                days_since_last_action = 0
+        else:
+            current_status = '未持有'
+            days_since_last_action = (current_date - last_date).days
+    else:
+        current_status = '未持有'
+        days_since_last_action = 0
+    
+    return {
+        'avg_holding_days': round(avg_holding_days, 1),
+        'avg_sell_to_buy_days': round(avg_sell_to_buy_days, 1),
+        'current_status': current_status,
+        'days_since_last_action': days_since_last_action
+    }
+
 if __name__ == '__main__':
-    app.run_server(debug=True, host='0.0.0.0', port=8050) 
+    app.run_server(debug=True, host='127.0.0.1', port=8050) 

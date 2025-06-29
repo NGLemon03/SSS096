@@ -58,74 +58,29 @@ param_presets = {
 
 "Single 2": {"linlen": 90, "factor": 40, "smaalen": 30, "devwin": 30, "buy_mult": 1.45, "sell_mult": 1.25,"stop_loss":0.2, "strategy_type": "single", "smaa_source": "Self"},
 "Single 3": {"linlen": 80, "factor": 10, "smaalen": 60, "devwin": 20, "buy_mult": 0.4, "sell_mult": 1.5, "strategy_type": "single", "smaa_source": "Self"},
-"ssma_turn_1308": {'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 47, 'min_dist': 16, 'buy_shift': 2, 'exit_shift': 1, 'vol_window': 90, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.1, 'stop_loss': 0.0,
-                "strategy_type": "ssma_turn", "smaa_source": "Self"},        
-"ssma_turn_1939":{'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 48, 'min_dist': 14, 'buy_shift': 1, 'exit_shift': 1, 'vol_window': 80, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.6, 'stop_loss': 0.2,
-                "strategy_type": "ssma_turn", "smaa_source": "Self"},    
+"SSMA_turn 1": {"linlen": 15,"smaalen": 40,"factor": 40.0,"prom_factor": 70,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,"vol_window": 40,"quantile_win": 65,
+ "signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,"strategy_type": "ssma_turn","smaa_source": "Self"},
+"SSMA_turn 2": {"linlen": 10,"smaalen": 35,"factor": 50.0,"prom_factor": 70,"min_dist": 8,"buy_shift": 6,"exit_shift": 0,"vol_window": 40,"quantile_win": 85,
+    "signal_cooldown_days": 10,"buy_mult": 1.6,"sell_mult": 2.2,"stop_loss": 0.2,"strategy_type": "ssma_turn","smaa_source": "Factor (^TWII / 2414.TW)"},
+
+"SSMA_turn 4": {"linlen": 10,"smaalen": 35,"factor": 40.0,"prom_factor": 68,"min_dist": 8,"buy_shift": 6,"exit_shift": 0,"vol_window": 40,"quantile_win": 65,
+    "signal_cooldown_days": 10,"buy_mult": 1.6,"sell_mult": 2.2,"stop_loss": 0.15,"strategy_type": "ssma_turn","smaa_source": "Factor (^TWII / 2414.TW)"},
+
+
+
+"SSMA_turn 3": {"linlen": 20,"smaalen": 40,"factor": 40.0,"prom_factor": 69,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,"vol_window": 45,"quantile_win": 55,
+    "signal_cooldown_days": 10,"buy_mult": 1.65,"sell_mult": 2.1,"stop_loss": 0.2,"strategy_type": "ssma_turn","smaa_source": "Self"},
+ 
 "SSMA_turn 0": {"linlen": 25, "smaalen": 85, "factor": 80.0, "prom_factor": 9, "min_dist": 8, "buy_shift": 0, "exit_shift": 6, "vol_window": 90, "quantile_win": 65, "signal_cooldown_days": 7, "buy_mult": 0.15, "sell_mult": 0.1, "stop_loss": 0.13, 
                 "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
+#"ssma_turn_1308": {'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 47, 'min_dist': 16, 'buy_shift': 2, 'exit_shift': 1, 'vol_window': 90, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.1, 'stop_loss': 0.0,
+#                "strategy_type": "ssma_turn", "smaa_source": "Self"},        
+"ssma_turn_1939":{'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 48, 'min_dist': 14, 'buy_shift': 1, 'exit_shift': 1, 'vol_window': 80, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.6, 'stop_loss': 0.2,
+                "strategy_type": "ssma_turn", "smaa_source": "Self"},                   
 "RMA_1921": {'linlen': 167, 'smaalen': 107, 'rma_len': 35, 'dev_len': 80, 'factor': 40, 'buy_mult': 1.15, 'sell_mult': 0.95, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2412.TW)"},
-"RMA_1615":{'linlen': 75, 'smaalen': 232, 'rma_len': 60, 'dev_len': 45, 'factor': 40, 'buy_mult': 0.9, 'sell_mult': 2.15, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2414.TW)"},
+#"RMA_1615":{'linlen': 75, 'smaalen': 232, 'rma_len': 60, 'dev_len': 45, 'factor': 40, 'buy_mult': 0.9, 'sell_mult': 2.15, 'stop_loss': 0.3, 'prom_factor': 0.5, 'min_dist': 5,  "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2414.TW)"},
         
-#    "SSMA_turn 1": {
-#                "linlen": 15,"smaalen": 40,"factor": 40.0,"prom_factor": 70,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,
-#                "vol_window": 40,"quantile_win": 65,"signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,
-#                "strategy_type": "ssma_turn","smaa_source": "Self"},
-"SSMA_turn 2": {
-    "linlen": 10,
-    "smaalen": 35,
-    "factor": 50.0,
-    "prom_factor": 70,
-    "min_dist": 8,
-    "buy_shift": 6,
-    "exit_shift": 0,
-    "vol_window": 40,
-    "quantile_win": 85,
-    "signal_cooldown_days": 10,
-    "buy_mult": 1.6,
-    "sell_mult": 2.2,
-    "stop_loss": 0.2,
-    "strategy_type": "ssma_turn",
-    "smaa_source": "Factor (^TWII / 2414.TW)"
-},
 
-#"SSMA_turn 4": {
-#    "linlen": 10,
-#    "smaalen": 35,
-#    "factor": 40.0,
-#    "prom_factor": 68,
-#    "min_dist": 8,
-#    "buy_shift": 6,
-#    "exit_shift": 0,
-#    "vol_window": 40,
-#    "quantile_win": 65,
-#    "signal_cooldown_days": 10,
-#    "buy_mult": 1.6,
-#    "sell_mult": 2.2,
-#    "stop_loss": 0.15,
-#    "strategy_type": "ssma_turn",
-#    "smaa_source": "Factor (^TWII / 2414.TW)"
-#},
-
-
-
-"SSMA_turn 3": {
-    "linlen": 20,
-    "smaalen": 40,
-    "factor": 40.0,
-    "prom_factor": 69,
-    "min_dist": 10,
-    "buy_shift": 6,
-    "exit_shift": 4,
-    "vol_window": 45,
-    "quantile_win": 55,
-    "signal_cooldown_days": 10,
-    "buy_mult": 1.65,
-    "sell_mult": 2.1,
-    "stop_loss": 0.2,
-    "strategy_type": "ssma_turn",
-    "smaa_source": "Self"
-},
 "single_1939": {'linlen': 64, 'smaalen': 132, 'devwin': 20, 'factor': 40, 'buy_mult': 0.1, 'sell_mult': 1.75, 'stop_loss': 0.4, 'prom_factor': 0.5, 'min_dist': 5, "strategy_type": "single", "smaa_source": "Self"},
 "ssma_turn_1994": {'linlen': 145, 'smaalen': 25, 'factor': 40.0, 'prom_factor': 55, 'min_dist': 6, 'buy_shift': 0, 'exit_shift': 1, 'vol_window': 70, 'quantile_win': 15, 'signal_cooldown_days': 5, 'buy_mult': 1.2, 'sell_mult': 1.1, 'stop_loss': 0.4,
                 "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2412.TW)"},

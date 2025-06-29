@@ -85,6 +85,21 @@
     color: #111 !important;
     border: 1px solid #ccc !important;
 }
+.theme-light .modal-content {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+.theme-light .modal-header {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    border-bottom: 1px solid #ccc !important;
+}
+.theme-light .modal-footer {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    border-top: 1px solid #ccc !important;
+}
 
 /* --------- 自訂主題：藍底黃字 --------- */
 .theme-blue input[type="text"],
@@ -165,6 +180,21 @@
     border-radius: 8px;
     padding: 16px;
 }
+.theme-dark .modal-content {
+    background: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+.theme-dark .modal-header {
+    background: #181818 !important;
+    color: #fff !important;
+    border-bottom: 1px solid #444 !important;
+}
+.theme-dark .modal-footer {
+    background: #181818 !important;
+    color: #fff !important;
+    border-top: 1px solid #444 !important;
+}
 
 /* 淺色主題 */
 .theme-light .sidebar-panel {
@@ -197,6 +227,21 @@
     border-radius: 8px;
     padding: 16px;
 }
+.theme-light .modal-content {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+.theme-light .modal-header {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    border-bottom: 1px solid #ccc !important;
+}
+.theme-light .modal-footer {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    border-top: 1px solid #ccc !important;
+}
 
 /* 藍黃主題 */
 .theme-blue .sidebar-panel {
@@ -228,6 +273,21 @@
     color: #ffe066 !important;
     border-radius: 8px;
     padding: 16px;
+}
+.theme-blue .modal-content {
+    background: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+.theme-blue .modal-header {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border-bottom: 1px solid #0055aa !important;
+}
+.theme-blue .modal-footer {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border-top: 1px solid #0055aa !important;
 }
 
 /* --------- 頭部控制按鈕樣式 --------- */
@@ -290,9 +350,13 @@
     font-weight: bold !important;
 }
 .theme-dark #main-metrics-table .dash-cell,
-.theme-dark #compare-table .dash-cell,
 .theme-dark [id*="strategy-table"] .dash-cell {
     background-color: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+/* 比較表格的單元格背景色由 Python 代碼控制，不在此處強制覆蓋 */
+.theme-dark #compare-table .dash-cell {
     color: #fff !important;
     border: 1px solid #444 !important;
 }
@@ -310,6 +374,15 @@
     border: 1px solid #444 !important;
 }
 
+/* 比較表格特殊樣式 */
+#compare-table .dash-cell {
+    transition: all 0.3s ease !important;
+}
+#compare-table .dash-cell:hover {
+    transform: scale(1.02) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
 .theme-light #main-metrics-table .dash-header,
 .theme-light #compare-table .dash-header,
 .theme-light [id*="strategy-table"] .dash-header {
@@ -318,9 +391,13 @@
     font-weight: bold !important;
 }
 .theme-light #main-metrics-table .dash-cell,
-.theme-light #compare-table .dash-cell,
 .theme-light [id*="strategy-table"] .dash-cell {
     background-color: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+/* 比較表格的單元格背景色由 Python 代碼控制，不在此處強制覆蓋 */
+.theme-light #compare-table .dash-cell {
     color: #111 !important;
     border: 1px solid #ccc !important;
 }
@@ -346,9 +423,13 @@
     font-weight: bold !important;
 }
 .theme-blue #main-metrics-table .dash-cell,
-.theme-blue #compare-table .dash-cell,
 .theme-blue [id*="strategy-table"] .dash-cell {
     background-color: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+/* 比較表格的單元格背景色由 Python 代碼控制，不在此處強制覆蓋 */
+.theme-blue #compare-table .dash-cell {
     color: #ffe066 !important;
     border: 1px solid #0055aa !important;
 }
@@ -468,3 +549,179 @@
     background: #003366 !important;
     color: #fff !important;
 } 
+
+.metrics-cards-row {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* --------- 版本沿革模態框樣式 --------- */
+.version-history-modal-body {
+    max-height: 70vh !important;
+    overflow-y: auto !important;
+    padding: 20px !important;
+}
+
+/* 深色主題模態框樣式 */
+.theme-dark .modal-content {
+    background: #232323 !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+
+.theme-dark .modal-header {
+    background: #181818 !important;
+    color: #fff !important;
+    border-bottom: 1px solid #444 !important;
+}
+
+.theme-dark .modal-footer {
+    background: #181818 !important;
+    color: #fff !important;
+    border-top: 1px solid #444 !important;
+}
+
+.theme-dark .modal-title {
+    color: #ffe066 !important;
+    font-weight: bold !important;
+}
+
+.theme-dark .version-history-modal-body {
+    background: #232323 !important;
+    color: #fff !important;
+}
+
+.theme-dark .version-history-modal-body h1,
+.theme-dark .version-history-modal-body h2,
+.theme-dark .version-history-modal-body h3,
+.theme-dark .version-history-modal-body h4,
+.theme-dark .version-history-modal-body h5,
+.theme-dark .version-history-modal-body h6 {
+    color: #ffe066 !important;
+}
+
+.theme-dark .version-history-modal-body p {
+    color: #fff !important;
+}
+
+.theme-dark .version-history-modal-body code {
+    background: #181818 !important;
+    color: #ffe066 !important;
+    border: 1px solid #444 !important;
+}
+
+.theme-dark .version-history-modal-body pre {
+    background: #181818 !important;
+    color: #ffe066 !important;
+    border: 1px solid #444 !important;
+}
+
+/* 淺色主題模態框樣式 */
+.theme-light .modal-content {
+    background: #fff !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+}
+
+.theme-light .modal-header {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    border-bottom: 1px solid #ccc !important;
+}
+
+.theme-light .modal-footer {
+    background: #f8f9fa !important;
+    color: #111 !important;
+    border-top: 1px solid #ccc !important;
+}
+
+.theme-light .modal-title {
+    color: #007bff !important;
+    font-weight: bold !important;
+}
+
+.theme-light .version-history-modal-body {
+    background: #fff !important;
+    color: #111 !important;
+}
+
+.theme-light .version-history-modal-body h1,
+.theme-light .version-history-modal-body h2,
+.theme-light .version-history-modal-body h3,
+.theme-light .version-history-modal-body h4,
+.theme-light .version-history-modal-body h5,
+.theme-light .version-history-modal-body h6 {
+    color: #007bff !important;
+}
+
+.theme-light .version-history-modal-body p {
+    color: #111 !important;
+}
+
+.theme-light .version-history-modal-body code {
+    background: #f8f9fa !important;
+    color: #007bff !important;
+    border: 1px solid #ccc !important;
+}
+
+.theme-light .version-history-modal-body pre {
+    background: #f8f9fa !important;
+    color: #007bff !important;
+    border: 1px solid #ccc !important;
+}
+
+/* 藍黃主題模態框樣式 */
+.theme-blue .modal-content {
+    background: #002244 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+
+.theme-blue .modal-header {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border-bottom: 1px solid #0055aa !important;
+}
+
+.theme-blue .modal-footer {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border-top: 1px solid #0055aa !important;
+}
+
+.theme-blue .modal-title {
+    color: #ffe066 !important;
+    font-weight: bold !important;
+}
+
+.theme-blue .version-history-modal-body {
+    background: #002244 !important;
+    color: #ffe066 !important;
+}
+
+.theme-blue .version-history-modal-body h1,
+.theme-blue .version-history-modal-body h2,
+.theme-blue .version-history-modal-body h3,
+.theme-blue .version-history-modal-body h4,
+.theme-blue .version-history-modal-body h5,
+.theme-blue .version-history-modal-body h6 {
+    color: #ffe066 !important;
+}
+
+.theme-blue .version-history-modal-body p {
+    color: #ffe066 !important;
+}
+
+.theme-blue .version-history-modal-body code {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
+
+.theme-blue .version-history-modal-body pre {
+    background: #003366 !important;
+    color: #ffe066 !important;
+    border: 1px solid #0055aa !important;
+}
