@@ -19,6 +19,51 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# 解包器函數：支援 pack_df/pack_series 和傳統 JSON 字串兩種格式
+def df_from_pack(data):
+    """從 pack_df 結果或 JSON 字串解包 DataFrame"""
+    import io, json
+    import pandas as pd
+    if data is None or data == "" or data == "[]":
+        return pd.DataFrame()
+    if isinstance(data, str):
+        # 先嘗試 split → 再退回預設
+        for orient in ("split", None):
+            try:
+                kw = {"orient": orient} if orient else {}
+                return pd.read_json(io.StringIO(data), **kw)
+            except Exception:
+                pass
+        return pd.DataFrame()
+    if isinstance(data, (list, dict)):
+        try:
+            return pd.DataFrame(data)
+        except Exception:
+            return pd.DataFrame()
+    return pd.DataFrame()
+
+def series_from_pack(data):
+    """從 pack_series 結果或 JSON 字串解包 Series"""
+    import io
+    import pandas as pd
+    if data is None or data == "" or data == "[]":
+        return pd.Series(dtype=float)
+    if isinstance(data, str):
+        # Series 也先試 split
+        for orient in ("split", None):
+            try:
+                kw = {"orient": orient} if orient else {}
+                return pd.read_json(io.StringIO(data), typ="series", **kw)
+            except Exception:
+                pass
+        return pd.Series(dtype=float)
+    if isinstance(data, (list, dict)):
+        try:
+            return pd.Series(data)
+        except Exception:
+            return pd.Series(dtype=float)
+    return pd.Series(dtype=float)
+
 from SSSv096 import (
     param_presets, load_data, compute_single, compute_dual, compute_RMA,
     compute_ssma_turn_combined, backtest_unified, plot_stock_price, plot_equity_cash, calculate_holding_periods
@@ -305,64 +350,77 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                 # 運行 ensemble 策略
                 open_px, w, trades, stats, method_name, equity, daily_state, trade_ledger = run_ensemble(cfg)
                 
-                # 直接使用 trade_ledger，不再手工构造简化的 trade_records
+                # === 構建圖表資料 ===
+                # 1) 價格線：用 open_px
+                price_series = open_px
+                
+                # 2) 建立標準 trade_df：從 Ensemble 的 trade_ledger 轉成畫圖標準表
                 if not trade_ledger.empty:
-                    # 将 trade_ledger 转换为 app 需要的格式
-                    trade_records = []
-                    for _, row in trade_ledger.iterrows():
-                        trade_records.append({
-                            'signal_date': row.name,  # 使用索引作为日期
-                            'trade_date': row.name,
-                            'type': row['side'],  # 使用 side 字段
-                            'price': row['open'],  # 使用 open 价格
-                            'shares': row['units'],  # 使用实际交易单位
-                            'return': row.get('return', 0.0),  # 如果有 return 字段
-                            'exec_notional': row['exec_notional'],  # 实际交易金额
-                            'fees_total': row['fees_total'],  # 总费用
-                            'cash_after': row['cash_after'],  # 交易后现金
-                            'equity_after': row['equity_after']  # 交易后总资产
-                        })
+                    # 從 trade_ledger 取出交易日與動作，轉成標準格式
+                    trade_df_std = trade_ledger.reset_index()[['date', 'type']].copy()
+                    trade_df_std['trade_date'] = pd.to_datetime(trade_df_std['date'])
+                    
+                    # 對齊當日開盤價，得到畫圖要的 price（不是 exec_notional！）
+                    trade_df_std['price'] = trade_df_std['trade_date'].map(open_px)
+                    
+                    # 只保留畫圖必要欄位（統一規格）
+                    trade_df_std = trade_df_std[['trade_date', 'type', 'price']]
+                    
+                    # 建立 signals_df 用於其他顯示
+                    signals_df = trade_df_std.copy()
+                    signals_df = signals_df.rename(columns={'type': 'action'})
+                    signals_df = signals_df[['trade_date', 'action', 'price']]
                 else:
-                    trade_records = []
+                    trade_df_std = pd.DataFrame(columns=['trade_date', 'type', 'price'])
+                    signals_df = pd.DataFrame(columns=['trade_date', 'action', 'price'])
                 
-                trade_df = pd.DataFrame(trade_records)
-                trades_df = trade_ledger if not trade_ledger.empty else pd.DataFrame()
-                signals_df = daily_state if daily_state is not None else pd.DataFrame()
+                # 3) 權益/現金曲線：來自 daily_state['equity'] / ['cash']
+                if daily_state is not None and not daily_state.empty:
+                    equity_curve = daily_state['equity']
+                    cash_curve = daily_state['cash']
+                    weight_curve = daily_state['w']
+                else:
+                    equity_curve = equity
+                    cash_curve = pd.Series(1.0, index=equity.index)
+                    weight_curve = w
                 
-                # 构造指标，使用 trade_ledger 的实际交易次数
+                # === 構造結果 ===
+                # 構造指標，使用 trade_ledger 的實際交易次數
                 metrics = {
                     'total_return': stats.get('total_return', 0.0),
                     'annual_return': stats.get('annual_return', 0.0),
                     'max_drawdown': stats.get('max_drawdown', 0.0),
                     'sharpe_ratio': stats.get('sharpe_ratio', 0.0),
                     'calmar_ratio': stats.get('calmar_ratio', 0.0),
-                    'num_trades': len(trade_ledger) if not trade_ledger.empty else 0
+                    # 主要交易次數（與單策略格式一致）
+                    'num_trades': int(len(trade_ledger) if trade_ledger is not None and not trade_ledger.empty else 0),
+                    # 全部調倉次數
+                    'num_trades_all': int(len(trade_ledger) if trade_ledger is not None and not trade_ledger.empty else 0),
+                    # 有效交易(可選)：例如金額 >= 初始資金的 0.5%
+                    'num_trades_effective': int((trade_ledger['exec_notional'].abs() >= 0.005 * 1.0).sum() if trade_ledger is not None and not trade_ledger.empty else 0)
                 }
                 
-                # 添加投资组合状态信息
-                if daily_state is not None and not daily_state.empty:
-                    latest_state = daily_state.iloc[-1]
-                    metrics.update({
-                        'current_weight': latest_state['w'],
-                        'cash_percentage': latest_state['cash_pct'],
-                        'invested_percentage': latest_state['invested_pct'],
-                        'current_cash': latest_state['cash'],
-                        'position_value': latest_state['position_value'],
-                        'total_equity': latest_state['equity']
-                    })
+                # === JSON-friendly 包裝 ===
+                def pack_series(s): 
+                    return s.to_json(date_format="iso", orient="split") if not s.empty else "[]"
+                def pack_df(df):   
+                    return df.to_json(date_format="iso", orient="split") if not df.empty else "[]"
                 
                 result = {
                     'trades': [],
-                    'trade_df': trade_df,
-                    'trades_df': trades_df,
-                    'signals_df': signals_df,
+                    'trade_df': pack_df(trade_df_std) if not trade_df_std.empty else "[]",
+                    'trades_df': pack_df(trade_df_std) if not trade_df_std.empty else "[]",
+                    'signals_df': pack_df(signals_df),
                     'metrics': metrics,
-                    'equity_curve': equity,
-                    'daily_state': daily_state,
-                    'trade_ledger': trade_ledger
+                    'equity_curve': pack_series(equity_curve),
+                    'cash_curve': pack_series(cash_curve),
+                    'weight_curve': pack_series(weight_curve),
+                    'price_series': pack_series(price_series),
+                    'daily_state': pack_df(daily_state) if daily_state is not None and not daily_state.empty else "[]",
+                    'trade_ledger': pack_df(trade_ledger.reset_index()) if trade_ledger is not None and not trade_ledger.empty else "[]"
                 }
                 
-                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity)}, 交易數={len(trade_ledger) if not trade_ledger.empty else 0}")
+                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity)}, 交易數={len(trade_ledger) if trade_ledger is not None and not trade_ledger.empty else 0}")
                 
             except Exception as e:
                 logger.error(f"Ensemble 策略執行失敗: {e}")
@@ -392,13 +450,17 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
             if df_ind.empty:
                 continue
             result = backtest_unified(df_ind, strat_type, strat_params, discount=discount, trade_cooldown_bars=cooldown, bad_holding=bad_holding)
-        result['trade_df'] = result['trade_df'].to_json(date_format='iso')
-        if 'signals_df' in result and isinstance(result['signals_df'], pd.DataFrame):
-            result['signals_df'] = result['signals_df'].to_json(date_format='iso')
-        if 'trades_df' in result and isinstance(result['trades_df'], pd.DataFrame):
-            result['trades_df'] = result['trades_df'].to_json(date_format='iso')
-        if 'equity_curve' in result and isinstance(result['equity_curve'], pd.Series):
-            result['equity_curve'] = result['equity_curve'].to_json(date_format='iso')
+        # 統一使用 orient="split" 打包，避免重複序列化
+        # 注意：Ensemble 策略已經在 pack_df/pack_series 中處理過，這裡只處理單策略
+        if strat_type != 'ensemble':
+            if hasattr(result.get('trade_df'), 'to_json'):
+                result['trade_df'] = result['trade_df'].to_json(date_format='iso', orient='split')
+            if 'signals_df' in result and hasattr(result['signals_df'], 'to_json'):
+                result['signals_df'] = result['signals_df'].to_json(date_format='iso', orient='split')
+            if 'trades_df' in result and hasattr(result['trades_df'], 'to_json'):
+                result['trades_df'] = result['trades_df'].to_json(date_format='iso', orient='split')
+            if 'equity_curve' in result and hasattr(result['equity_curve'], 'to_json'):
+                result['equity_curve'] = result['equity_curve'].to_json(date_format='iso', orient='split')
         if 'trades' in result and isinstance(result['trades'], list):
             result['trades'] = [
                 (str(t[0]), t[1], str(t[2])) if isinstance(t, tuple) and len(t) == 3 else t
@@ -410,8 +472,16 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
     first_strat = list(results.keys())[0] if results else strategy_names[0]
     first_smaa_src = param_presets[first_strat].get("smaa_source", "Self")
     df_raw_main, _ = load_data(ticker, start_date, end_date if end_date else None, smaa_source=first_smaa_src)
-    df_raw_json = df_raw_main.to_json(date_format='iso')
-    return json.dumps({'results': results, 'df_raw': df_raw_json, 'ticker': ticker})
+    
+    # 統一使用 orient="split" 序列化，確保一致性
+    payload = {
+        'results': results, 
+        'df_raw': df_raw_main.to_json(date_format='iso', orient='split'), 
+        'ticker': ticker
+    }
+    
+    # 不再使用 json.dumps，直接回傳 dict，讓 Dash 的 Store 處理
+    return payload
 
 # --------- 主頁籤內容顯示 ---------
 @app.callback(
@@ -424,9 +494,9 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
 def update_tab(data, tab, selected_strategy, theme):
     if not data:
         return html.Div("請先執行回測")
-    data = json.loads(data)
+    # data 現在已經是 dict，不需要 json.loads
     results = data['results']
-    df_raw = pd.read_json(io.StringIO(data['df_raw']))
+    df_raw = df_from_pack(data['df_raw'])  # 使用 df_from_pack 統一解包
     ticker = data['ticker']
     strategy_names = list(results.keys())
     # 根據主題決定 plotly template 與顏色
@@ -460,7 +530,50 @@ def update_tab(data, tab, selected_strategy, theme):
             if not result:
                 continue
             
-            trade_df = pd.read_json(io.StringIO(result['trade_df']))
+            # 使用解包器函數，支援 pack_df 和傳統 JSON 字串兩種格式
+            trade_df = df_from_pack(result.get('trade_df'))
+            
+            # 標準化交易資料，確保有統一的 trade_date/type/price 欄位
+            try:
+                from SSS_EnsembleTab import _normalize_trades_for_ui as norm
+                trade_df = norm(trade_df)
+                logger.info(f"標準化後 trades_ui 欄位: {list(trade_df.columns)}")
+            except Exception as e:
+                logger.warning(f"無法使用 SSS_EnsembleTab 標準化，使用後備方案: {e}")
+                # 後備標準化方案
+                if trade_df is not None and len(trade_df) > 0:
+                    trade_df = trade_df.copy()
+                    trade_df.columns = [str(c).lower() for c in trade_df.columns]
+                    
+                    # 確保有 trade_date 欄
+                    if "trade_date" not in trade_df.columns:
+                        if "date" in trade_df.columns:
+                            trade_df["trade_date"] = pd.to_datetime(trade_df["date"], errors="coerce")
+                        elif isinstance(trade_df.index, pd.DatetimeIndex):
+                            trade_df = trade_df.reset_index().rename(columns={"index": "trade_date"})
+                        else:
+                            trade_df["trade_date"] = pd.NaT
+                    else:
+                        trade_df["trade_date"] = pd.to_datetime(trade_df["trade_date"], errors="coerce")
+                    
+                    # 確保有 type 欄
+                    if "type" not in trade_df.columns:
+                        if "action" in trade_df.columns:
+                            trade_df["type"] = trade_df["action"].astype(str).str.lower()
+                        elif "side" in trade_df.columns:
+                            trade_df["type"] = trade_df["side"].astype(str).str.lower()
+                        else:
+                            trade_df["type"] = "hold"
+                    
+                    # 確保有 price 欄
+                    if "price" not in trade_df.columns:
+                        for c in ["open", "price_open", "exec_price", "px", "close"]:
+                            if c in trade_df.columns:
+                                trade_df["price"] = trade_df[c]
+                                break
+                        if "price" not in trade_df.columns:
+                            trade_df["price"] = 0.0
+            
             # 型別對齊：保證 trade_date 為 Timestamp，price/shares 為 float
             if 'trade_date' in trade_df.columns:
                 trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
@@ -579,8 +692,6 @@ def update_tab(data, tab, selected_strategy, theme):
         
         # 創建策略回測的子頁籤容器
         return html.Div([
-        
-
             dcc.Tabs(
                 id='strategy-tabs',
                 value=f"strategy_{strategy_names[0]}" if strategy_names else "no_strategy",
@@ -602,7 +713,28 @@ def update_tab(data, tab, selected_strategy, theme):
             result = results.get(strategy)
             if not result:
                 continue
-            trade_df = pd.read_json(io.StringIO(result['trade_df']))
+            # 使用解包器函數，支援 pack_df 和傳統 JSON 字串兩種格式
+            trade_df = df_from_pack(result.get('trade_df'))
+            
+            # 標準化交易資料
+            try:
+                from SSS_EnsembleTab import _normalize_trades_for_ui as norm
+                trade_df = norm(trade_df)
+            except Exception:
+                # 後備標準化方案
+                if trade_df is not None and len(trade_df) > 0:
+                    trade_df = trade_df.copy()
+                    trade_df.columns = [str(c).lower() for c in trade_df.columns]
+                    if "trade_date" not in trade_df.columns and "date" in trade_df.columns:
+                        trade_df["trade_date"] = pd.to_datetime(trade_df["date"], errors="coerce")
+                    if "type" not in trade_df.columns and "action" in trade_df.columns:
+                        trade_df["type"] = trade_df["action"].astype(str).str.lower()
+                    if "price" not in trade_df.columns:
+                        for c in ["open", "price_open", "exec_price", "px", "close"]:
+                            if c in trade_df.columns:
+                                trade_df["price"] = trade_df[c]
+                                break
+            
             if 'trade_date' in trade_df.columns:
                 trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
             if trade_df.empty:
@@ -634,7 +766,27 @@ def update_tab(data, tab, selected_strategy, theme):
                 continue
             
             # 讀取交易數據
-            trade_df = pd.read_json(io.StringIO(result['trade_df']))
+            trade_df = df_from_pack(result.get('trade_df'))
+            
+            # 標準化交易資料
+            try:
+                from SSS_EnsembleTab import _normalize_trades_for_ui as norm
+                trade_df = norm(trade_df)
+            except Exception:
+                # 後備標準化方案
+                if trade_df is not None and len(trade_df) > 0:
+                    trade_df = trade_df.copy()
+                    trade_df.columns = [str(c).lower() for c in trade_df.columns]
+                    if "trade_date" not in trade_df.columns and "date" in trade_df.columns:
+                        trade_df["trade_date"] = pd.to_datetime(trade_df["date"], errors="coerce")
+                    if "type" not in trade_df.columns and "action" in trade_df.columns:
+                        trade_df["type"] = trade_df["action"].astype(str).str.lower()
+                    if "price" not in trade_df.columns:
+                        for c in ["open", "price_open", "exec_price", "px", "close"]:
+                            if c in trade_df.columns:
+                                trade_df["price"] = trade_df[c]
+                                break
+            
             if 'trade_date' in trade_df.columns:
                 trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
             
@@ -749,14 +901,34 @@ def download_trade(n_clicks, table_data, backtest_data):
     strategy = ctx_trigger['strategy']
     
     # 從backtest_data中獲取對應策略的交易數據
-    data = json.loads(backtest_data)
-    results = data['results']
+    # backtest_data 現在已經是 dict，不需要 json.loads
+    results = backtest_data['results']
     result = results.get(strategy)
     
     if not result:
         return [None] * len(n_clicks)
     
-    trade_df = pd.read_json(io.StringIO(result['trade_df']))
+    # 使用解包器函數，支援 pack_df 和傳統 JSON 字串兩種格式
+    trade_df = df_from_pack(result.get('trade_df'))
+    
+    # 標準化交易資料
+    try:
+        from SSS_EnsembleTab import _normalize_trades_for_ui as norm
+        trade_df = norm(trade_df)
+    except Exception:
+        # 後備標準化方案
+        if trade_df is not None and len(trade_df) > 0:
+            trade_df = trade_df.copy()
+            trade_df.columns = [str(c).lower() for c in trade_df.columns]
+            if "trade_date" not in trade_df.columns and "date" in trade_df.columns:
+                trade_df["trade_date"] = pd.to_datetime(trade_df["date"], errors="coerce")
+            if "type" not in trade_df.columns and "action" in trade_df.columns:
+                trade_df["type"] = trade_df["action"].astype(str).str.lower()
+            if "price" not in trade_df.columns:
+                for c in ["open", "price_open", "exec_price", "px", "close"]:
+                    if c in trade_df.columns:
+                        trade_df["price"] = trade_df[c]
+                        break
     
     # 創建下載數據
     def to_xlsx(bytes_io):

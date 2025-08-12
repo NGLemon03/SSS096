@@ -6,3 +6,5 @@ Ensemble 調試信息
 成本: CostParams(buy_fee_bp=4.27, sell_fee_bp=4.27, sell_tax_bp=30.0)
 權重統計: min=0.2000, mean=0.7899, max=0.9985
 績效: {'total_return': 47.9789179154733, 'annual_return': 4.5902381604780835, 'max_drawdown': -0.4305337105539596, 'sharpe_ratio': 1.4350929743165437, 'calmar_ratio': 10.661739250503546, 'sortino_ratio': 1.6654225234516864, 'time_in_market': 0.7444950645406226, 'turnover_py': 2.444523532177289, 'num_trades': 213}
+交易明細欄位: trades=['trade_date', 'type', 'price', 'price_open', 'weight_change', 'cost'], trade_ledger=['trade_date', 'type', 'price', 'date', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'cash_after', 'equity_after']
+交易筆數: trades=211, trade_ledger=211

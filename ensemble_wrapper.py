@@ -105,7 +105,7 @@ class EnsembleStrategyWrapper:
                          params: dict, 
                          ticker: str = "00631L.TW",
                          strategies: Optional[List[str]] = None,
-                         cost_params: Optional[Dict] = None) -> Tuple[pd.Series, pd.DataFrame, Dict[str, float], str]:
+                         cost_params: Optional[Dict] = None) -> Tuple[pd.Series, pd.DataFrame, Dict[str, float], str, pd.DataFrame, pd.DataFrame]:
         """
         Ensemble 策略主函數
         
@@ -130,6 +130,8 @@ class EnsembleStrategyWrapper:
             trades: 交易記錄 (pd.DataFrame)
             metrics: 績效指標 (dict)
             method_name: 方法名稱 (str)
+            daily_state: 每日資產狀態 (pd.DataFrame)
+            trade_ledger: 交易流水帳 (pd.DataFrame)
         """
         try:
             # 構建 EnsembleParams
@@ -582,7 +584,7 @@ if __name__ == "__main__":
             'min_trade_dw': 0.02
         }
         
-        equity, trades, stats, method_name = wrapper.ensemble_strategy(
+        equity, trades, stats, method_name, daily_state, trade_ledger = wrapper.ensemble_strategy(
             method="majority",
             params=params,
             ticker="00631L.TW"

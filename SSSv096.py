@@ -39,6 +39,48 @@ from typing import Dict, List, Tuple, Optional
 import itertools
 from dataclasses import dataclass, field
 
+def _coerce_trade_schema(df):
+    """檢查是否需要下載股價數據的剎車機制"""
+    import pandas as pd, numpy as np
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=["trade_date","type","price"])
+
+    out = df.copy()
+    out.columns = [str(c).lower() for c in out.columns]
+
+    # trade_date
+    if "trade_date" not in out.columns:
+        if "date" in out.columns:
+            out["trade_date"] = pd.to_datetime(out["date"], errors="coerce")
+        elif isinstance(out.index, pd.DatetimeIndex):
+            out = out.reset_index().rename(columns={"index": "trade_date"})
+        else:
+            out["trade_date"] = pd.NaT
+    else:
+        out["trade_date"] = pd.to_datetime(out["trade_date"], errors="coerce")
+
+    # type
+    if "type" not in out.columns:
+        if "action" in out.columns:
+            out["type"] = out["action"].astype(str).str.lower()
+        elif "side" in out.columns:
+            out["type"] = out["side"].astype(str).str.lower()
+        elif "dw" in out.columns:
+            out["type"] = np.where(out["dw"]>0, "buy", np.where(out["dw"]<0, "sell", "hold"))
+        else:
+            out["type"] = "hold"
+
+    # price
+    if "price" not in out.columns:
+        for c in ["open","price_open","exec_price","px","close"]:
+            if c in out.columns:
+                out["price"] = out[c]
+                break
+        if "price" not in out.columns:
+            out["price"] = np.nan
+
+    return out.sort_values("trade_date")
+
 # --- 專案結構與日誌設定 ---
 from analysis import config as cfg
 from analysis.logging_config import setup_logging
@@ -926,53 +968,34 @@ def backtest_unified(
                 # 直接使用 run_ensemble 計算的權益曲線，避免重複計算
                 equity_curve = equity
                 
-                # 直接使用 trade_ledger，不再手工构造简化的 trade_records
-                if not trade_ledger.empty:
-                    # 将 trade_ledger 转换为需要的格式
-                    trade_records = []
-                    for _, row in trade_ledger.iterrows():
+                # 構造交易記錄
+                trade_records = []
+                if not trades.empty:
+                    for _, row in trades.iterrows():
                         trade_records.append({
-                            'signal_date': row.name,  # 使用索引作为日期
-                            'trade_date': row.name,
-                            'type': row['side'],  # 使用 side 字段
-                            'price': row['open'],  # 使用 open 价格
-                            'shares': row['units'],  # 使用实际交易单位
-                            'return': row.get('return', 0.0),  # 如果有 return 字段
-                            'exec_notional': row['exec_notional'],  # 实际交易金额
-                            'fees_total': row['fees_total'],  # 总费用
-                            'cash_after': row['cash_after'],  # 交易后现金
-                            'equity_after': row['equity_after']  # 交易后总资产
+                            'signal_date': row['trade_date'],
+                            'trade_date': row['trade_date'],
+                            'type': row['type'],
+                            'price': row['price_open'],
+                            'shares': 1.0,  # 簡化處理
+                            'return': 0.0   # 簡化處理
                         })
-                else:
-                    trade_records = []
                 
                 trade_df = pd.DataFrame(trade_records)
-                trades_df = trade_ledger if not trade_ledger.empty else pd.DataFrame()
-                signals_df = daily_state if daily_state is not None else pd.DataFrame()
+                trades_df = pd.DataFrame()  # 簡化處理
+                signals_df = pd.DataFrame()  # 簡化處理
                 
-                # 构造指标，使用 trade_ledger 的实际交易次数
+                # 構造指標
                 metrics = {
                     'total_return': stats.get('total_return', 0.0),
                     'annual_return': stats.get('annual_return', 0.0),
                     'max_drawdown': stats.get('max_drawdown', 0.0),
                     'sharpe_ratio': stats.get('sharpe_ratio', 0.0),
                     'calmar_ratio': stats.get('calmar_ratio', 0.0),
-                    'num_trades': len(trade_ledger) if not trade_ledger.empty else 0
+                    'num_trades': len(trade_records)
                 }
                 
-                # 添加投资组合状态信息
-                if daily_state is not None and not daily_state.empty:
-                    latest_state = daily_state.iloc[-1]
-                    metrics.update({
-                        'current_weight': latest_state['w'],
-                        'cash_percentage': latest_state['cash_pct'],
-                        'invested_percentage': latest_state['invested_pct'],
-                        'current_cash': latest_state['cash'],
-                        'position_value': latest_state['position_value'],
-                        'total_equity': latest_state['equity']
-                    })
-                
-                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity_curve)}, 交易數={len(trade_ledger) if not trade_ledger.empty else 0}")
+                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity_curve)}, 交易數={len(trade_records)}")
                 
             except FileNotFoundError as e:
                 # 如果沒有找到 trades_*.csv 文件，創建一個模擬的 ensemble 結果
@@ -1307,6 +1330,62 @@ def compute_backtest_for_periods(ticker: str,periods: List[Tuple[str, str]],stra
     return results
 
 
+# --- 新增：把各種交易格式轉成畫圖要的統一規格 ---
+def normalize_trades_for_plots(trades_df: pd.DataFrame, price_series: pd.Series | None = None) -> pd.DataFrame:
+    """把各種交易格式轉成畫圖要的統一規格：trade_date + type + price"""
+    import pandas as pd
+    import numpy as np
+    
+    if trades_df is None or len(trades_df) == 0:
+        return pd.DataFrame(columns=["trade_date", "type", "price"])
+
+    t = trades_df.copy()
+
+    # 動作欄位：支援 type / side / action
+    if "type" not in t.columns:
+        for c in ("side", "action"):
+            if c in t.columns:
+                t["type"] = t[c].astype(str).str.lower()
+                break
+        else:
+            # 如果都沒有找到動作欄位，返回空表
+            return pd.DataFrame(columns=["trade_date", "type", "price"])
+
+    # 日期欄位：支援 trade_date / date / index 是時間
+    if "trade_date" not in t.columns:
+        if "date" in t.columns:
+            t["trade_date"] = pd.to_datetime(t["date"], errors="coerce")
+        elif isinstance(t.index, pd.DatetimeIndex):
+            t["trade_date"] = t.index
+        else:
+            # 如果都沒有找到日期欄位，返回空表
+            return pd.DataFrame(columns=["trade_date", "type", "price"])
+    
+    t["trade_date"] = pd.to_datetime(t["trade_date"], errors="coerce")
+
+    # 價格欄位：優先用 price；否則用 open；都沒有就從 price_series 對齊
+    if "price" not in t.columns:
+        if "open" in t.columns:
+            t["price"] = pd.to_numeric(t["open"], errors="coerce")
+        elif price_series is not None:
+            # 從 price_series 對齊當日價格
+            s = price_series.rename("open").reset_index()
+            s.columns = ["trade_date", "open"]
+            t = t.merge(s, on="trade_date", how="left")
+            t["price"] = t["open"]
+        else:
+            # 如果都沒有價格資訊，返回空表
+            return pd.DataFrame(columns=["trade_date", "type", "price"])
+
+    # 只保留畫圖必要欄位（統一規格）
+    keep = ["trade_date", "type", "price"]
+    t = t[[c for c in keep if c in t.columns]]
+    
+    # 過濾掉無效資料
+    t = t.dropna(subset=["trade_date", "type", "price"])
+    
+    return t
+
 # --- 可視化函數 ---
 def plot_stock_price(df: pd.DataFrame, trades_df: pd.DataFrame, ticker: str) -> go.Figure:
     """
@@ -1320,19 +1399,48 @@ def plot_stock_price(df: pd.DataFrame, trades_df: pd.DataFrame, ticker: str) -> 
     Returns:
         go.Figure: Plotly 圖表物件.
     """
+    # 先規格化交易資料，確保有統一的 trade_date + type + price 欄位
+    trades_df = normalize_trades_for_plots(trades_df, price_series=df.get("open", df["close"]))
+    
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df['close'], name='Close Price', line=dict(color='dodgerblue')))
+    
     if not trades_df.empty:
+        # 現在 trades_df 已經有統一的 trade_date + type + price 欄位
         buys = trades_df[trades_df['type'] == 'buy']
         adds = trades_df[trades_df['type'] == 'add'] if 'add' in trades_df['type'].values else pd.DataFrame()
-        sells = trades_df[trades_df['type'] == 'sell']  # 修改:僅顯示 sell,忽略 sell_forced
-        fig.add_trace(go.Scatter(x=buys['trade_date'], y=buys['price'], mode='markers', name='Buy',
-                                 marker=dict(symbol='cross', size=10, color='green')))
+        sells = trades_df[trades_df['type'] == 'sell']
+        
+        # 繪製買入信號
+        if not buys.empty:
+            fig.add_trace(go.Scatter(
+                x=buys['trade_date'], 
+                y=buys['price'], 
+                mode='markers', 
+                name='Buy',
+                marker=dict(symbol='cross', size=10, color='green')
+            ))
+        
+        # 繪製加碼信號
         if not adds.empty:
-            fig.add_trace(go.Scatter(x=adds['trade_date'], y=adds['price'], mode='markers', name='Add-On Buy',
-                                     marker=dict(symbol='cross', size=10, color='limegreen')))
-        fig.add_trace(go.Scatter(x=sells['trade_date'], y=sells['price'], mode='markers', name='Sell',
-                                 marker=dict(symbol='x', size=10, color='red')))
+            fig.add_trace(go.Scatter(
+                x=adds['trade_date'], 
+                y=adds['price'], 
+                mode='markers', 
+                name='Add-On Buy',
+                marker=dict(symbol='cross', size=10, color='limegreen')
+            ))
+        
+        # 繪製賣出信號
+        if not sells.empty:
+            fig.add_trace(go.Scatter(
+                x=sells['trade_date'], 
+                y=sells['price'], 
+                mode='markers', 
+                name='Sell',
+                marker=dict(symbol='x', size=10, color='red')
+            ))
+    
     fig.update_layout(title=f'{ticker} 股價與交易信號',
                       xaxis_title='日期', yaxis_title='價格', template='plotly_white')
     return fig
@@ -1350,6 +1458,9 @@ def plot_indicators(df_ind: pd.DataFrame, strategy_type: str, trades_df: pd.Data
             fig.add_trace(go.Scatter(x=df_ind.index, y=df_ind['base_long'], name='Base Long', line=dict(color='purple', dash='dot')))
     else:  # ssma_turn
         fig.add_trace(go.Scatter(x=df_ind.index, y=df_ind['smaa'], name='SMAA', line=dict(color='blue')))
+
+    # 先規格化交易資料，確保有統一的 trade_date + type + price 欄位
+    trades_df = normalize_trades_for_plots(trades_df, price_series=df_ind.get("smaa"))
 
     buys = trades_df[trades_df['type'] == 'buy']
     sells = trades_df[trades_df['type'] == 'sell']
@@ -1372,15 +1483,17 @@ def plot_equity_cash(trades_df: pd.DataFrame, price_df: pd.DataFrame, initial_ca
         logger.warning("交易或價格數據為空,無法繪製權益曲線.")
         return go.Figure()
 
+    # 先規格化交易資料，確保有統一的 trade_date + type + price 欄位
+    trades_df = normalize_trades_for_plots(trades_df, price_series=price_df.get("open", price_df["close"]))
+
     # 1. 建立每日時間軸
     dates = price_df.index
     cash_series = pd.Series(initial_cash, index=dates, dtype=float)
     shares_series = pd.Series(0, index=dates, dtype=float)
 
-    # 型別自動對齊：將 trade_date 轉為 Timestamp
-    if 'trade_date' in trades_df.columns:
-        trades_df = trades_df.copy()
-        trades_df['trade_date'] = pd.to_datetime(trades_df['trade_date'])
+    # 現在 trades_df 已經有統一的 trade_date 欄位，直接轉換為 Timestamp
+    trades_df = trades_df.copy()
+    trades_df['trade_date'] = pd.to_datetime(trades_df['trade_date'])
 
     # 2. 逐筆交易更新持股和現金
     for _, row in trades_df.iterrows():

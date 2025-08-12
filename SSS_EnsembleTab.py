@@ -46,6 +46,65 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------
+# 統一交易明細契約標準化函式
+# ---------------------------------------------------------------------
+
+def _normalize_trades_for_ui(df: pd.DataFrame) -> pd.DataFrame:
+    """標準化交易明細為統一契約，確保至少有 trade_date/type/price 三欄
+    
+    Args:
+        df: 原始交易明細 DataFrame
+        
+    Returns:
+        標準化後的 DataFrame，包含 trade_date, type, price 三欄
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=["trade_date", "type", "price"])
+    
+    out = df.copy()
+    out.columns = [c.lower() for c in out.columns]
+    
+    # 日期欄
+    if "trade_date" not in out.columns:
+        if "date" in out.columns:
+            out["trade_date"] = pd.to_datetime(out["date"])
+        elif isinstance(out.index, pd.DatetimeIndex):
+            out = out.reset_index().rename(columns={"index": "trade_date"})
+        else:
+            out["trade_date"] = pd.NaT
+    else:
+        out["trade_date"] = pd.to_datetime(out["trade_date"], errors="coerce")
+    
+    # 動作欄
+    if "type" not in out.columns:
+        if "side" in out.columns:
+            out["type"] = out["side"].astype(str).str.lower()
+        elif "action" in out.columns:
+            out["type"] = out["action"].astype(str).str.lower()
+        elif "dw" in out.columns:
+            # 退而求其次：用權重變化推斷
+            out["type"] = np.where(out["dw"] > 0, "buy",
+                            np.where(out["dw"] < 0, "sell", "hold"))
+        else:
+            out["type"] = "hold"
+    
+    # 價格欄
+    if "price" not in out.columns:
+        for c in ("open", "exec_price", "px", "entry_price", "price_after"):
+            if c in out.columns:
+                out["price"] = out[c]
+                break
+        if "price" not in out.columns:
+            out["price"] = np.nan
+    
+    # 最少三欄按時間排序
+    base_cols = ["trade_date", "type", "price"]
+    extra = [c for c in out.columns if c not in base_cols]
+    out = out[base_cols + extra].sort_values("trade_date")
+    
+    return out
+
+# ---------------------------------------------------------------------
 # 路徑設定：以目前檔案所在資料夾為工作根目錄（符合你的習慣）
 # ---------------------------------------------------------------------
 BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
@@ -184,8 +243,8 @@ def load_positions_matrix(out_dir: Path, index: pd.DatetimeIndex, strategies: Li
     if file_map is None:
         file_map = {}
     
-    # 構建持倉矩陣
-    pos_df = pd.DataFrame(index=index)
+    # 使用 dict 先收集所有策略的持倉數據，避免 DataFrame 碎片化
+    positions_dict = {}
     
     for strat in strategies:
         if strat in file_map:
@@ -211,8 +270,14 @@ def load_positions_matrix(out_dir: Path, index: pd.DatetimeIndex, strategies: Li
         # 重建持倉序列
         pos = build_position_from_trades(csv_path, index)
         if not pos.empty:
-            pos_df[strat] = pos
+            positions_dict[strat] = pos
             file_map[strat] = csv_path
+    
+    # 一次性構建 DataFrame，避免碎片化
+    if positions_dict:
+        pos_df = pd.DataFrame(positions_dict, index=index)
+    else:
+        pos_df = pd.DataFrame(index=index)
     
     # 策略健康檢查/過濾：移除全0或持倉過少的子策略
     logger.info(f"[Ensemble] 持倉矩陣加載完成: {pos_df.shape[0]} 天 × {pos_df.shape[1]} 策略")
@@ -313,96 +378,13 @@ class CostParams:
     def sell_rate(self) -> float:
         return (self.sell_fee_bp + self.sell_tax_bp) / 10000.0
 
-def build_portfolio_ledger(open_px, w, cost: CostParams, initial_capital=1_000_000.0, lot_size=None):
-    """
-    依照每日 open 價與目標權重 w_t（含 floor、delta_cap 等限制後的最終 w_t），
-    產出兩個 DataFrame：
-      1) daily_state: 每日現金/持倉/總資產/權重
-      2) trades: 只有權重變動日的交易明細（買賣金額、費用、稅、交易後資產）
-    """
-    import math
-    import pandas as pd
-
-    df = pd.DataFrame({"open": open_px, "w": w}).dropna().copy()
-    df["w_prev"] = df["w"].shift(1).fillna(0.0)
-    df["dw"] = df["w"] - df["w_prev"]
-
-    cash = initial_capital
-    units = 0.0
-    rows_daily, rows_trades = [], []
-
-    for dt, row in df.iterrows():
-        px = float(row["open"])
-
-        # --- before state
-        pos_val_before = units * px
-        equity_before  = cash + pos_val_before
-
-        # --- target units
-        target_notional = row["w"] * equity_before
-        target_units = target_notional / px
-        if lot_size:
-            target_units = math.floor(target_units / lot_size) * lot_size
-
-        delta_units = target_units - units
-        if abs(delta_units) < 1e-12:  # 防極小波動
-            delta_units = 0.0
-        notional = abs(delta_units) * px
-
-        # --- fees/taxes (bp)
-        fee_buy  = (cost.buy_fee_bp  / 10000.0) * notional if delta_units > 0 else 0.0
-        fee_sell = (cost.sell_fee_bp / 10000.0) * notional if delta_units < 0 else 0.0
-        tax      = (cost.sell_tax_bp / 10000.0) * notional if delta_units < 0 else 0.0
-        fees_total = fee_buy + fee_sell + tax
-
-        # --- cash update
-        if delta_units > 0:
-            cash -= notional + fee_buy
-            side = "BUY"
-        elif delta_units < 0:
-            cash += notional - fee_sell - tax
-            side = "SELL"
-        else:
-            side = "HOLD"
-
-        units = target_units
-
-        # --- after state
-        pos_val_after = units * px
-        equity_after  = cash + pos_val_after
-        actual_w = (pos_val_after / equity_after) if equity_after != 0 else 0.0
-        trade_pct = (notional / equity_before) if equity_before != 0 else 0.0
-
-        rows_daily.append({
-            "date": dt, "open": px,
-            "w_prev": row["w_prev"], "w": row["w"], "dw": row["dw"],
-            "units": units,
-            "cash_before": cash + (notional + fee_buy) - (notional - fee_sell - tax) if side != "HOLD" else cash,  # 可選
-            "position_value_before": pos_val_before, "equity_before": equity_before,
-            "cash": cash, "position_value": pos_val_after, "equity": equity_after,
-            "cash_pct": (cash / equity_after) if equity_after != 0 else 0.0,
-            "invested_pct": (pos_val_after / equity_after) if equity_after != 0 else 0.0,
-            "actual_w": actual_w,
-        })
-
-        if delta_units != 0:
-            rows_trades.append({
-                "date": dt, "open": px, "side": side,
-                "w_prev": row["w_prev"], "w": row["w"], "dw": row["dw"],
-                "delta_units": delta_units, "exec_notional": notional,
-                "fee_buy": fee_buy, "fee_sell": fee_sell, "tax": tax, "fees_total": fees_total,
-                "trade_pct": trade_pct,
-                "cash_after": cash, "position_value_after": pos_val_after, "equity_after": equity_after,
-                "actual_w_after": actual_w,
-            })
-
-    daily_state = pd.DataFrame(rows_daily).set_index("date")
-    trades = pd.DataFrame(rows_trades).set_index("date")
-    return daily_state, trades
+    @property
+    def sell_tax_rate(self) -> float:
+        return self.sell_tax_bp / 10000.0
 
 def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | None = None,
-                        start_equity: float = 1.0) -> Tuple[pd.Series, pd.DataFrame]:
-    """計算 Open-to-Open 權益曲線和交易記錄"""
+                        start_equity: float = 1.0) -> Tuple[pd.Series, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """計算 Open-to-Open 權益曲線、交易記錄、每日狀態和交易流水帳"""
     if cost is None:
         cost = CostParams()
     
@@ -414,8 +396,15 @@ def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | Non
     E = pd.Series(index=r.index, dtype=float)
     E.iloc[0] = start_equity
     
+    # 現金曲線
+    cash = pd.Series(index=r.index, dtype=float)
+    cash.iloc[0] = start_equity
+    
     # 交易記錄
     trades = []
+    
+    # 交易流水帳（詳細記錄）
+    trade_ledger = []
     
     for i in range(1, len(r)):
         prev_w = w.iloc[i-1] if i-1 < len(w) else 0
@@ -427,6 +416,7 @@ def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | Non
         if abs(dw) > 0.001:  # 有顯著變化
             if dw > 0:  # 買入
                 c = dw * cost.buy_rate
+                exec_notional = dw * open_px.iloc[i]
                 trades.append({
                     'trade_date': r.index[i],
                     'type': 'buy',
@@ -434,23 +424,58 @@ def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | Non
                     'weight_change': dw,
                     'cost': c
                 })
+                
+                # 交易流水帳
+                trade_ledger.append({
+                    'date': r.index[i],
+                    'type': 'buy',  # 統一使用 type 欄位
+                    'open': open_px.iloc[i],
+                    'delta_units': dw,
+                    'exec_notional': exec_notional,
+                    'fee_buy': c,
+                    'fee_sell': 0.0,
+                    'tax': 0.0,
+                    'cash_after': cash.iloc[i-1] - exec_notional - c,
+                    'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - c
+                })
             else:  # 賣出
                 c = abs(dw) * cost.sell_rate
+                exec_notional = abs(dw) * open_px.iloc[i]
+                tax = abs(dw) * cost.sell_tax_rate
+                total_cost = c + tax
+                
                 trades.append({
                     'trade_date': r.index[i],
                     'type': 'sell',
                     'price_open': open_px.iloc[i],
                     'weight_change': abs(dw),
-                    'cost': c
+                    'cost': total_cost
+                })
+                
+                # 交易流水帳
+                trade_ledger.append({
+                    'date': r.index[i],
+                    'type': 'sell',  # 統一使用 type 欄位
+                    'open': open_px.iloc[i],
+                    'delta_units': abs(dw),
+                    'exec_notional': exec_notional,
+                    'fee_buy': 0.0,
+                    'fee_sell': c,
+                    'tax': tax,
+                    'cash_after': cash.iloc[i-1] + exec_notional - total_cost,
+                    'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
                 })
             
             # 扣除交易成本
             E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - c
+            cash.iloc[i] = cash.iloc[i-1] - (dw * open_px.iloc[i] + c) if dw > 0 else cash.iloc[i-1] + (abs(dw) * open_px.iloc[i] - c)
         else:
             E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w)
+            cash.iloc[i] = cash.iloc[i-1]
     
-    # 補齊權益曲線（包括沒有交易的天數）
-    E = E.reindex(open_px.index).fillna(method='ffill').fillna(start_equity)
+    # 補齊權益曲線和現金曲線（包括沒有交易的天數）
+    E = E.reindex(open_px.index).ffill().fillna(start_equity)
+    cash = cash.reindex(open_px.index).ffill().fillna(start_equity)
     
     # 轉換交易記錄為 DataFrame
     if trades:
@@ -458,7 +483,21 @@ def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | Non
     else:
         trades_df = pd.DataFrame(columns=['trade_date', 'type', 'price_open', 'weight_change', 'cost'])
     
-    return E, trades_df
+    # 轉換交易流水帳為 DataFrame
+    if trade_ledger:
+        trade_ledger_df = pd.DataFrame(trade_ledger)
+    else:
+        trade_ledger_df = pd.DataFrame(columns=['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'cash_after', 'equity_after'])
+    
+    # 構建每日狀態 DataFrame
+    daily_state = pd.DataFrame({
+        'equity': E,
+        'cash': cash,
+        'w': w.reindex(open_px.index).fillna(0),
+        'position_value': E - cash
+    })
+    
+    return E, trades_df, daily_state, trade_ledger_df
 
 def perf_stats(equity: pd.Series, w: pd.Series) -> Dict[str, float]:
     """計算績效指標"""
@@ -511,8 +550,6 @@ class RunConfig:
     cost: CostParams = None      # 預設不加成本；要貼近實盤可調整
     file_map: Dict[str, Path] = None  # 策略名 -> 文件路徑的映射
     majority_k_pct: float = None  # 比例門檻（0.0~1.0），優先於固定 majority_k
-    initial_capital: float = 1_000_000.0  # 初始資金
-    lot_size: int | None = None  # 整股單位（100/1000，None=允許零股）
     
     def __post_init__(self):
         if self.params is None:
@@ -521,7 +558,7 @@ class RunConfig:
             self.cost = CostParams()
 
 def run_ensemble(cfg: RunConfig) -> Tuple[pd.Series, pd.Series, pd.DataFrame, Dict[str, float], str, pd.Series, pd.DataFrame, pd.DataFrame]:
-    """回傳：(open 價), (每日權重 w), (交易紀錄 trades), (績效指標 dict), (方法名稱), (權益曲線), (每日資產表), (交易流水帳)"""
+    """回傳：(open 價), (每日權重 w), (交易紀錄 trades), (績效指標 dict), (方法名稱), (權益曲線), (每日狀態 daily_state), (交易流水帳 trade_ledger)"""
     # 讀價（Open）
     px_path = DATA_DIR / f"{cfg.ticker.replace(':','_')}_data_raw.csv"
     px = _read_market_csv_auto(px_path)
@@ -617,7 +654,7 @@ def run_ensemble(cfg: RunConfig) -> Tuple[pd.Series, pd.Series, pd.DataFrame, Di
     logger.info(f"[Ensemble] w_smooth(min/mean/max)={w.min():.2f}/{w.mean():.2f}/{w.max():.2f}")
 
     # 權益與事件（Open→Open）
-    equity, trades = equity_open_to_open(px["open"], w, cfg.cost, start_equity=1.0)
+    equity, trades, daily_state, trade_ledger = equity_open_to_open(px["open"], w, cfg.cost, start_equity=1.0)
     
     # 調試信息：Open→Open 報酬統計
     r_oo = (px['open'].shift(-1) / px['open'] - 1).dropna()
@@ -628,6 +665,15 @@ def run_ensemble(cfg: RunConfig) -> Tuple[pd.Series, pd.Series, pd.DataFrame, Di
     
     # 調試信息：績效摘要
     logger.info(f"[Ensemble] 績效摘要: 總報酬={stats.get('total_return', 0):.4f}, 年化={stats.get('annual_return', 0):.4f}, 最大回撤={stats.get('max_drawdown', 0):.4f}")
+    
+    # 標準化交易明細為統一契約
+    trades_ui = _normalize_trades_for_ui(trades)
+    trade_ledger_ui = _normalize_trades_for_ui(trade_ledger)
+    
+    # 調試信息：標準化後的交易明細
+    logger.info(f"[Ensemble] 標準化後 trades_ui 欄位: {list(trades_ui.columns)}")
+    logger.info(f"[Ensemble] 標準化後 trade_ledger_ui 欄位: {list(trade_ledger_ui.columns)}")
+    logger.info(f"[Ensemble] 交易筆數: trades={len(trades_ui)}, trade_ledger={len(trade_ledger_ui)}")
     
     # 保存調試信息到文件
     debug_path = OUT_DIR / f"ensemble_debug_{method_name}.txt"
@@ -640,43 +686,13 @@ def run_ensemble(cfg: RunConfig) -> Tuple[pd.Series, pd.Series, pd.DataFrame, Di
         f.write(f"成本: {cfg.cost}\n")
         f.write(f"權重統計: min={w.min():.4f}, mean={w.mean():.4f}, max={w.max():.4f}\n")
         f.write(f"績效: {stats}\n")
+        f.write(f"交易明細欄位: trades={list(trades_ui.columns)}, trade_ledger={list(trade_ledger_ui.columns)}\n")
+        f.write(f"交易筆數: trades={len(trades_ui)}, trade_ledger={len(trade_ledger_ui)}\n")
     
     logger.info(f"[Ensemble] 調試信息已保存到: {debug_path}")
     
-    # 建立投資組合流水帳（ledger）
-    daily_state, trade_ledger = build_portfolio_ledger(
-        open_px=px["open"],
-        w=w,                            # 最終權重序列
-        cost=cfg.cost,                  # CostParams
-        initial_capital=getattr(cfg, 'initial_capital', 1_000_000.0),  # 沒設定就給 1_000_000
-        lot_size=getattr(cfg, 'lot_size', None) or None
-    )
-    
-    # 存檔（與回測報告同一時間戳）
-    ts = pd.Timestamp.now().strftime("%Y%m%d_%H%M")
-    outdir = Path("results")
-    outdir.mkdir(exist_ok=True, parents=True)
-    name_tag = f"{method_name}_{ts}"
-    daily_state.to_csv(outdir / f"ensemble_daily_state_{name_tag}.csv", encoding="utf-8-sig")
-    trade_ledger.to_csv(outdir / f"ensemble_trade_ledger_{name_tag}.csv", encoding="utf-8-sig")
-    
-    # 印出最後一列摘要（final_w、cash_pct、invested_pct、last_trade exec_notional/fees_total）
-    if not daily_state.empty and not trade_ledger.empty:
-        latest_state = daily_state.iloc[-1]
-        latest_trade = trade_ledger.iloc[-1]
-        logger.info(f"[Ensemble] 投資組合流水帳摘要: final_w={latest_state['w']:.3f}, "
-                   f"cash_pct={latest_state['cash_pct']:.1%}, invested_pct={latest_state['invested_pct']:.1%}, "
-                   f"last_trade={latest_trade['side']} ${latest_trade['exec_notional']:,.0f} "
-                   f"(fees_total=${latest_trade['fees_total']:.2f})")
-    elif not daily_state.empty:
-        latest_state = daily_state.iloc[-1]
-        logger.info(f"[Ensemble] 投資組合流水帳摘要: final_w={latest_state['w']:.3f}, "
-                   f"cash_pct={latest_state['cash_pct']:.1%}, invested_pct={latest_state['invested_pct']:.1%}, "
-                   f"無交易")
-    
-    logger.info(f"[Ensemble] 投資組合流水帳已保存到: {outdir}")
-    
-    return px["open"], w, trades, stats, method_name, equity, daily_state, trade_ledger
+    # 回傳標準化後的交易明細，確保前端顯示一致性
+    return px["open"], w, trades_ui, stats, method_name, equity, daily_state, trade_ledger_ui
 
 def save_outputs(method_name: str, open_px: pd.Series, w: pd.Series, trades: pd.DataFrame, stats: Dict[str, float], equity: pd.Series = None, cost: CostParams = None, daily_state: pd.DataFrame = None, trade_ledger: pd.DataFrame = None):
     """保存 ensemble 輸出文件"""
@@ -692,13 +708,14 @@ def save_outputs(method_name: str, open_px: pd.Series, w: pd.Series, trades: pd.
     # 交易記錄
     if not trades.empty:
         trades.to_csv(OUT_DIR / f"ensemble_trades_{method_name}.csv", index=False)
-
-    # 新增：保存 daily_state 和 trade_ledger
-    if daily_state is not None:
-        daily_state.to_csv(OUT_DIR / f"ensemble_ledger_daily_{method_name}.csv", index=True)
     
-    if trade_ledger is not None:
-        trade_ledger.to_csv(OUT_DIR / f"ensemble_ledger_trades_{method_name}.csv", index=True)
+    # 每日狀態
+    if daily_state is not None and not daily_state.empty:
+        daily_state.to_csv(OUT_DIR / f"ensemble_daily_state_{method_name}.csv", index=False)
+    
+    # 交易流水帳
+    if trade_ledger is not None and not trade_ledger.empty:
+        trade_ledger.to_csv(OUT_DIR / f"ensemble_trade_ledger_{method_name}.csv", index=False)
 
     # 附加寫入 summary（不存在則新建）
     summ_path = OUT_DIR / "ensemble_summary.csv"
@@ -750,8 +767,6 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument("--buy_fee_bp", type=float, default=4.27)
     ap.add_argument("--sell_fee_bp", type=float, default=4.27)
     ap.add_argument("--sell_tax_bp", type=float, default=30.0)
-    ap.add_argument("--initial_capital", type=float, default=1_000_000.0, help="初始資金")
-    ap.add_argument("--lot_size", type=int, default=None, help="整股單位（100/1000，None=允許零股）")
     return ap.parse_args()
 
 
@@ -775,9 +790,7 @@ def main():
         ticker=args.ticker,
         method=args.method,
         params=params,
-        cost=cost,
-        initial_capital=args.initial_capital,
-        lot_size=args.lot_size
+        cost=cost
     )
     
     # 強制使用比例門檻 majority_k_pct=0.55
@@ -831,17 +844,6 @@ def streamlit_ensemble_ui():
     with col5:
         sell_tax_bp = st.number_input("賣出證交税 (bp)", 0.0, 100.0, 30.0, 0.1)
     
-    # 資金與交易參數
-    st.subheader("資金與交易參數")
-    col6, col7 = st.columns(2)
-    
-    with col6:
-        initial_capital = st.number_input("初始資金", 100000.0, 10000000.0, 1000000.0, 100000.0, format="%.0f")
-    with col7:
-        lot_size_options = ["允許零股", "100股", "1000股"]
-        lot_size_choice = st.selectbox("整股單位", lot_size_options, index=0)
-        lot_size = None if lot_size_choice == "允許零股" else int(lot_size_choice.split("股")[0])
-    
     if st.button("執行 Ensemble 策略"):
         try:
             # 創建配置
@@ -865,9 +867,7 @@ def streamlit_ensemble_ui():
                 method=method,
                 params=params,
                 cost=cost,
-                majority_k_pct=majority_k_pct,
-                initial_capital=initial_capital,
-                lot_size=lot_size
+                majority_k_pct=majority_k_pct
             )
             
             # 運行 ensemble
@@ -892,61 +892,6 @@ def streamlit_ensemble_ui():
             # 保存輸出
             save_outputs(method_name, open_px, w, trades, stats, equity, cost, daily_state, trade_ledger)
             st.info(f"結果已保存到 {OUT_DIR}")
-            
-            # 顯示投資組合流水帳摘要
-            st.subheader("投資組合流水帳摘要")
-            
-            # 當前狀態卡片
-            if not daily_state.empty:
-                latest = daily_state.iloc[-1]
-                col9, col10, col11, col12 = st.columns(4)
-                with col9:
-                    st.metric("當前權重", f"{latest['w']:.2%}")
-                    st.metric("權重變化", f"{latest['dw']:.2%}")
-                with col10:
-                    st.metric("現金比例", f"{latest['cash_pct']:.2%}")
-                    st.metric("投入比例", f"{latest['invested_pct']:.2%}")
-                with col11:
-                    st.metric("現金", f"${latest['cash']:,.0f}")
-                    st.metric("持倉價值", f"${latest['position_value']:,.0f}")
-                with col12:
-                    st.metric("總資產", f"${latest['equity']:,.0f}")
-                    st.metric("持倉單位", f"{latest['units']:,.0f}")
-            
-            # 今日交易摘要（如果有）
-            if not trade_ledger.empty:
-                latest_trade = trade_ledger.iloc[-1]
-                st.subheader("最新交易")
-                col13, col14, col15, col16 = st.columns(4)
-                with col13:
-                    st.metric("交易方向", latest_trade['side'])
-                    st.metric("交易日期", str(latest_trade.name.date()))
-                with col14:
-                    st.metric("執行價格", f"${latest_trade['open']:.2f}")
-                    st.metric("權重變化", f"{latest_trade['dw']:.2%}")
-                with col15:
-                    st.metric("交易金額", f"${latest_trade['exec_notional']:,.0f}")
-                    st.metric("買進費用", f"${latest_trade['fee_buy']:.2f}")
-                with col16:
-                    st.metric("賣出費用", f"${latest_trade['fee_sell']:.2f}")
-                    st.metric("證交稅", f"${latest_trade['tax']:.2f}")
-            
-            # 表格顯示
-            st.subheader("每日資產表")
-            st.dataframe(daily_state)
-            
-            st.subheader("交易明細表")
-            st.dataframe(trade_ledger)
-            
-            # 匯出按鈕
-            if st.button("下載交易流水帳 CSV"):
-                csv = trade_ledger.to_csv(index=True, encoding='utf-8-sig')
-                st.download_button(
-                    label="下載 ensemble_trade_ledger.csv",
-                    data=csv,
-                    file_name=f"ensemble_trade_ledger_{method_name}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
             
         except Exception as e:
             st.error(f"執行失敗: {e}")
