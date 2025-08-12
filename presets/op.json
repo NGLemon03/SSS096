@@ -35,5 +35,15 @@
     "buy_shift": 3, "exit_shift": 7, "vol_window": 20, "stop_loss": 0.10,
     "quantile_win": 100, "cooldown_days": 3, "strategy_type": "ssma_turn",
     "buy_mult": 0.5, "sell_mult": 0.5
+  },
+  "Ensemble_Majority_Optimized": {
+    "strategy_type": "ensemble", "method": "majority", "majority_k": 6, "floor": 0.2, 
+    "ema_span": 3, "delta_cap": 0.10, "min_cooldown_days": 5, "min_trade_dw": 0.02,
+    "buy_fee_bp": 15.0, "sell_fee_bp": 15.0, "sell_tax_bp": 30.0, "ticker": "00631L.TW"
+  },
+  "Ensemble_Proportional_Optimized": {
+    "strategy_type": "ensemble", "method": "proportional", "floor": 0.2, 
+    "ema_span": 3, "delta_cap": 0.30, "min_cooldown_days": 1, "min_trade_dw": 0.02,
+    "buy_fee_bp": 15.0, "sell_fee_bp": 15.0, "sell_tax_bp": 30.0, "ticker": "00631L.TW"
   }
 }

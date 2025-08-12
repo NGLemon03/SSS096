@@ -14,14 +14,15 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from analysis.data_loader import load_data
-from SSSv095b2 import backtest_unified, param_presets, compute_single, compute_RMA, compute_ssma_turn_combined, compute_dual
+from SSSv096 import backtest_unified, param_presets, compute_single, compute_RMA, compute_ssma_turn_combined, compute_dual
 from analysis.config import RESULT_DIR, WF_PERIODS, STRESS_PERIODS, CACHE_DIR
 from analysis.metrics import calculate_max_drawdown
 from analysis.logging_config import setup_logging
 import logging
 
 # 初始化快取目錄
-shutil.rmtree(CACHE_DIR, ignore_errors=True)
+# 移除自動清理快取目錄，避免與其他程式衝突
+# shutil.rmtree(CACHE_DIR, ignore_errors=True)
 (CACHE_DIR / "price").mkdir(parents=True, exist_ok=True)
 (CACHE_DIR / "smaa").mkdir(parents=True, exist_ok=True)
 (CACHE_DIR / "factor").mkdir(parents=True, exist_ok=True)
@@ -612,14 +613,17 @@ for strategy in optuna_results['strategy'].unique():
         
         # 4. 添加策略和數據源信息
         for trial in diverse_trials:
-            # 生成簡短名稱
-            short_name = f"{strategy}_{data_source.split('(')[0].strip()}_{trial['trial_number']}"
+            # 生成簡短名稱（使用更安全的方式）
             if '2412' in data_source:
                 short_name = f"{strategy}_2412_{trial['trial_number']}"
             elif '2414' in data_source:
                 short_name = f"{strategy}_2414_{trial['trial_number']}"
             elif 'Self' in data_source:
                 short_name = f"{strategy}_Self_{trial['trial_number']}"
+            else:
+                # 使用更安全的方式處理data_source
+                clean_source = data_source.replace('(', '').replace(')', '').replace('/', '_').replace('^', '').strip()
+                short_name = f"{strategy}_{clean_source}_{trial['trial_number']}"
             
             trial['short_name'] = short_name
             selected_trials.append(trial)
@@ -828,7 +832,7 @@ if st.button("🚀 執行回測與分析", type="primary"):
                     logger.error(f"策略 {name} 的 df_ind 為空，跳過回測")
                     st.error(f"策略 {name} 的 df_ind 為空，跳過回測")
                     continue
-                # 使用與SSSv095b2一致的預設參數設定
+                # 使用與SSSv096一致的預設參數設定
                 result = backtest_unified(df_ind, strategy_type, params, buy_dates, sell_dates, 
                                          discount=0.30, trade_cooldown_bars=3, bad_holding=False)
                 results[name] = result

@@ -39,7 +39,7 @@ if str(ROOT) not in sys.path:
 
 from analysis import config as cfg
 from analysis import data_loader
-import SSSv095b2 as SSS
+import SSSv096 as SSS
 
 def compute_correlations(results: list, param_keys: list, metric_keys: List[str]) -> pd.DataFrame:
     """

@@ -10,8 +10,16 @@ import shutil
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+import joblib
+from analysis import config as cfg
+import yfinance as yf
+import logging
 
-from SSSv095b2 import (
+# 配置 logger
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+from SSSv096 import (
     param_presets, load_data, compute_single, compute_dual, compute_RMA,
     compute_ssma_turn_combined, backtest_unified, plot_stock_price, plot_equity_cash, calculate_holding_periods
 )
@@ -147,6 +155,21 @@ def update_sidebar_state(n_clicks, collapsed):
 )
 def update_strategy_params(strategy):
     params = param_presets[strategy]
+    
+    # 特殊處理 ensemble 策略，顯示參數摘要而不是輸入框
+    if params.get('strategy_type') == 'ensemble':
+        p = params.get('params', {})
+        c = params.get('trade_cost', {})
+        return html.Div([
+            html.Div(f"method: {params.get('method')}"),
+            html.Div(f"floor: {p.get('floor')} | ema_span: {p.get('ema_span')} | "
+                     f"delta_cap: {p.get('delta_cap')} | cooldown: {p.get('min_cooldown_days')} | "
+                     f"min_trade_dw: {p.get('min_trade_dw')} | majority_k: {p.get('majority_k', '-') }"),
+            html.Div(f"cost(bps): buy {c.get('buy_fee_bp')}, sell {c.get('sell_fee_bp')}, tax {c.get('sell_tax_bp')}"),
+            html.Small("（Ensemble 參數目前固定於 SSSv096.param_presets，如需調整建議在 SSSv096 內改）")
+        ])
+    
+    # 其他策略照舊處理
     controls = []
     for k, v in params.items():
         if k in ['strategy_type', 'smaa_source']:
@@ -186,17 +209,15 @@ def update_strategy_params(strategy):
     State('backtest-store', 'data')
 )
 def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, cooldown, bad_holding, strategy, param_values, param_ids, stored_data):
-    # 修改快取清理邏輯，避免與其他程式衝突
-    # 只清理 SMAA 快取，不清空整個 cache 目錄
-    smaa_cache_dir = "cache/cache_smaa"
-    if os.path.exists(smaa_cache_dir):
-        try:
-            # 只清理 SMAA 快取文件，保留目錄結構
-            for file_path in Path(smaa_cache_dir).glob("*.npy"):
-                file_path.unlink()
-            print(f"已清理 SMAA 快取: {smaa_cache_dir}")
-        except Exception as e:
-            print(f"清理 SMAA 快取失敗: {e}")
+    # 移除自動快取清理，避免多用户衝突
+    # 讓 joblib.Memory 自動管理快取，只在需要時手動清理
+    if n_clicks is None and not auto_run:
+        return stored_data
+    
+    # 載入數據
+    df_raw, df_factor = load_data(ticker, start_date, end_date, "Self")
+    if df_raw.empty:
+        return {"error": f"無法載入 {ticker} 的數據"}
     
     ctx_trigger = ctx.triggered_id
     # 只在 auto-run 為 True 或按鈕被點擊時運算
@@ -223,6 +244,144 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
             if df_ind.empty:
                 continue
             result = backtest_unified(df_ind, strat_type, backtest_params, buy_dates, sell_dates, discount=discount, trade_cooldown_bars=cooldown, bad_holding=bad_holding)
+        elif strat_type == 'ensemble':
+            # 用 price 當殼，直接調用 SSS_EnsembleTab 避免 streamlit 衝突
+            df_ind = df_raw[['open','close']].copy()
+
+            # 把 SSSv096 的巢狀參數攤平：
+            flat_params = {}
+            flat_params.update(strat_params.get('params', {}))       # floor / ema_span / delta_cap / ...
+            flat_params.update(strat_params.get('trade_cost', {}))   # buy_fee_bp / sell_fee_bp / sell_tax_bp
+            flat_params['method'] = strat_params.get('method', 'majority')
+            flat_params['ticker'] = ticker  # 用 UI 選的 ticker
+            
+            # === 修復 1：使用比例門檻避免 N 變動時失真 ===
+            if 'majority_k' in flat_params and flat_params.get('method') == 'majority':
+                # 將固定 K 轉換為比例門檻
+                flat_params['majority_k_pct'] = 0.55  # 預設 55% 門檻
+                flat_params.pop('majority_k', None)  # 移除固定 K 值
+                logger.info(f"[Ensemble] 使用比例門檻 majority_k_pct={flat_params['majority_k_pct']}")
+            
+            # === 修復 2：直接調用 SSS_EnsembleTab，避免 streamlit 衝突 ===
+            try:
+                import SSS_EnsembleTab as ens
+                logger.info(f"[Ensemble] using {ens.__file__}")
+                from SSS_EnsembleTab import run_ensemble, EnsembleParams, CostParams, RunConfig
+                
+                # 創建配置
+                ensemble_params = EnsembleParams(
+                    floor=flat_params.get("floor", 0.2),
+                    ema_span=flat_params.get("ema_span", 3),
+                    delta_cap=flat_params.get("delta_cap", 0.3),
+                    majority_k=flat_params.get("majority_k", 6),
+                    min_cooldown_days=flat_params.get("min_cooldown_days", 1),  # 與param_presets一致
+                    min_trade_dw=flat_params.get("min_trade_dw", 0.01)          # 與param_presets一致
+                )
+                
+                cost_params = CostParams(
+                    buy_fee_bp=flat_params.get("buy_fee_bp", 4.27),  # 與param_presets一致
+                    sell_fee_bp=flat_params.get("sell_fee_bp", 4.27), # 與param_presets一致
+                    sell_tax_bp=flat_params.get("sell_tax_bp", 30.0)  # 與param_presets一致
+                )
+                
+                cfg = RunConfig(
+                    ticker=ticker,
+                    method=flat_params.get("method", "majority"),
+                    params=ensemble_params,
+                    cost=cost_params
+                )
+                
+                # === 第3步：統一路徑與preset，確保app與SSS使用相同的trades來源 ===
+                # 傳遞比例門檻參數
+                if flat_params.get("majority_k_pct"):
+                    cfg.majority_k_pct = flat_params.get("majority_k_pct")
+                else:
+                    # 如果沒有majority_k_pct，強制使用0.55
+                    cfg.majority_k_pct = 0.55
+                    logger.info(f"[Ensemble] 強制設定 majority_k_pct=0.55")
+                
+                logger.info(f"[Ensemble] 執行配置: ticker={ticker}, method={flat_params.get('method')}, majority_k_pct={flat_params.get('majority_k_pct', 'N/A')}")
+                
+                # 運行 ensemble 策略
+                open_px, w, trades, stats, method_name, equity, daily_state, trade_ledger = run_ensemble(cfg)
+                
+                # 直接使用 trade_ledger，不再手工构造简化的 trade_records
+                if not trade_ledger.empty:
+                    # 将 trade_ledger 转换为 app 需要的格式
+                    trade_records = []
+                    for _, row in trade_ledger.iterrows():
+                        trade_records.append({
+                            'signal_date': row.name,  # 使用索引作为日期
+                            'trade_date': row.name,
+                            'type': row['side'],  # 使用 side 字段
+                            'price': row['open'],  # 使用 open 价格
+                            'shares': row['units'],  # 使用实际交易单位
+                            'return': row.get('return', 0.0),  # 如果有 return 字段
+                            'exec_notional': row['exec_notional'],  # 实际交易金额
+                            'fees_total': row['fees_total'],  # 总费用
+                            'cash_after': row['cash_after'],  # 交易后现金
+                            'equity_after': row['equity_after']  # 交易后总资产
+                        })
+                else:
+                    trade_records = []
+                
+                trade_df = pd.DataFrame(trade_records)
+                trades_df = trade_ledger if not trade_ledger.empty else pd.DataFrame()
+                signals_df = daily_state if daily_state is not None else pd.DataFrame()
+                
+                # 构造指标，使用 trade_ledger 的实际交易次数
+                metrics = {
+                    'total_return': stats.get('total_return', 0.0),
+                    'annual_return': stats.get('annual_return', 0.0),
+                    'max_drawdown': stats.get('max_drawdown', 0.0),
+                    'sharpe_ratio': stats.get('sharpe_ratio', 0.0),
+                    'calmar_ratio': stats.get('calmar_ratio', 0.0),
+                    'num_trades': len(trade_ledger) if not trade_ledger.empty else 0
+                }
+                
+                # 添加投资组合状态信息
+                if daily_state is not None and not daily_state.empty:
+                    latest_state = daily_state.iloc[-1]
+                    metrics.update({
+                        'current_weight': latest_state['w'],
+                        'cash_percentage': latest_state['cash_pct'],
+                        'invested_percentage': latest_state['invested_pct'],
+                        'current_cash': latest_state['cash'],
+                        'position_value': latest_state['position_value'],
+                        'total_equity': latest_state['equity']
+                    })
+                
+                result = {
+                    'trades': [],
+                    'trade_df': trade_df,
+                    'trades_df': trades_df,
+                    'signals_df': signals_df,
+                    'metrics': metrics,
+                    'equity_curve': equity,
+                    'daily_state': daily_state,
+                    'trade_ledger': trade_ledger
+                }
+                
+                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity)}, 交易數={len(trade_ledger) if not trade_ledger.empty else 0}")
+                
+            except Exception as e:
+                logger.error(f"Ensemble 策略執行失敗: {e}")
+                # 創建空的結果
+                result = {
+                    'trades': [],
+                    'trade_df': pd.DataFrame(),
+                    'trades_df': pd.DataFrame(),
+                    'signals_df': pd.DataFrame(),
+                    'metrics': {'total_return': 0.0, 'annual_return': 0.0, 'max_drawdown': 0.0, 'sharpe_ratio': 0.0, 'calmar_ratio': 0.0, 'num_trades': 0},
+                    'equity_curve': pd.Series(1.0, index=df_ind.index)
+                }
+            
+            # === 修復 3：添加調試日誌，核對子策略集合是否一致 ===
+            logger.info(f"[Ensemble] 執行完成，ticker={ticker}, method={flat_params.get('method')}")
+            if 'equity_curve' in result and hasattr(result['equity_curve'], 'shape'):
+                logger.info(f"[Ensemble] 權益曲線長度: {len(result['equity_curve'])}")
+            if 'trade_df' in result and hasattr(result['trade_df'], 'shape'):
+                logger.info(f"[Ensemble] 交易記錄數量: {len(result['trade_df'])}")
         else:
             if strat_type == 'single':
                 df_ind = compute_single(df_raw, df_factor, strat_params["linlen"], strat_params["factor"], strat_params["smaalen"], strat_params["devwin"], smaa_source=smaa_src)
@@ -324,7 +483,7 @@ def update_tab(data, tab, selected_strategy, theme):
                 display_df['return'] = display_df['return'].apply(lambda x: "-" if pd.isna(x) else f"{x:.2%}")
             
             metrics = result.get('metrics', {})
-            tooltip = f"{strategy} 策略說明"
+            tooltip = f"{strategy} 策略説明"
             param_display = {k: v for k, v in param_presets[strategy].items() if k != "strategy_type"}
             param_str = ", ".join(f"{k}: {v}" for k, v in param_display.items())
             avg_holding = calculate_holding_periods(trade_df)
@@ -397,7 +556,7 @@ def update_tab(data, tab, selected_strategy, theme):
                 html.Br(),
                 dcc.Graph(figure=fig1, config={'displayModeBar': True}, className='main-metrics-graph'),
                 dcc.Graph(figure=fig2, config={'displayModeBar': True}, className='main-cash-graph'),
-                # 將交易明細標題與說明合併為同一行
+                # 將交易明細標題與説明合併為同一行
                 html.Div([
                     html.H5("交易明細", style={"marginBottom": 0, "marginRight": "12px"}),
                     html.Div("實際下單日為信號日的隔天（S+1），修改代碼會影響很多層面，暫不修改", 
@@ -689,5 +848,105 @@ def calculate_strategy_detailed_stats(trade_df, df_raw):
         'days_since_last_action': days_since_last_action
     }
 
+def is_price_data_up_to_date(csv_path):
+    if not os.path.exists(csv_path):
+        return False
+    try:
+        df = pd.read_csv(csv_path)
+        if 'date' in df.columns:
+            last_date = pd.to_datetime(df['date'].iloc[-1])
+        else:
+            last_date = pd.to_datetime(df.iloc[-1, 0])
+        
+        # 獲取台北時間的今天
+        today = pd.Timestamp.now(tz='Asia/Taipei').normalize()
+        
+        # 檢查是否為工作日（週一到週五）
+        if today.weekday() >= 5:  # 週六(5)或週日(6)
+            # 如果是週末，檢查最後數據是否為上個工作日
+            last_weekday = today - pd.Timedelta(days=today.weekday() - 4)  # 上個週五
+            return last_date >= last_weekday
+        else:
+            # 如果是工作日，檢查是否為今天或昨天（考慮數據延遲）
+            yesterday = today - pd.Timedelta(days=1)
+            return last_date >= yesterday
+    except Exception:
+        return False
+
+def fetch_yf_data(ticker: str, filename: Path, start_date: str = "2000-01-01", end_date: str | None = None):
+    now_taipei = pd.Timestamp.now(tz='Asia/Taipei')
+    try:
+        end_date_str = end_date if end_date is not None else now_taipei.strftime('%Y-%m-%d')
+        df = yf.download(ticker, start=start_date, end=end_date_str, auto_adjust=True)
+        if df is None or df.empty:
+            raise ValueError("下載的數據為空")
+        df.to_csv(filename)
+        print(f"成功下載 '{ticker}' 數據到 '{filename}'.")
+    except Exception as e:
+        print(f"警告: '{ticker}' 下載失敗: {e}")
+
+def ensure_all_price_data_up_to_date(ticker_list, data_dir):
+    """智能檢查並更新股價數據，只在必要時下載"""
+    for ticker in ticker_list:
+        filename = Path(data_dir) / f"{ticker.replace(':','_')}_data_raw.csv"
+        if not is_price_data_up_to_date(filename):
+            print(f"{ticker} 股價資料需要更新，開始下載...")
+            fetch_yf_data(ticker, filename)
+        else:
+            print(f"{ticker} 股價資料已是最新，跳過下載。")
+
+# 簡化的股價數據下載剎車機制
+def should_download_price_data():
+    """檢查是否需要下載股價數據的剎車機制"""
+    try:
+        # 檢查是否為交易時間（避免在交易時間頻繁下載）
+        now = pd.Timestamp.now(tz='Asia/Taipei')
+        if now.weekday() < 5:  # 工作日
+            hour = now.hour
+            if 9 <= hour <= 13:  # 交易時間
+                print("當前為交易時間，跳過股價數據下載以避免幹擾")
+                return False
+        
+        # 檢查數據文件是否存在且較新（避免重複下載）
+        data_files_exist = all(
+            os.path.exists(Path(DATA_DIR) / f"{ticker.replace(':','_')}_data_raw.csv")
+            for ticker in TICKER_LIST
+        )
+        
+        if data_files_exist:
+            print("股價數據文件已存在，跳過初始下載")
+            return False
+        
+        return True
+    except Exception as e:
+        print(f"剎車機制檢查失敗: {e}，允許下載")
+        return True
+
+# 在 app 啟動時呼叫（添加剎車機制）
+TICKER_LIST = ['2330.TW', '2412.TW', '2414.TW', '^TWII']  # 依實際需求調整
+DATA_DIR = 'data'  # 依實際路徑調整
+
+# 安全的啟動機制
+def safe_startup():
+    """安全的啟動函數，避免線程衝突"""
+    try:
+        # 只有在剎車機制允許時才下載
+        if should_download_price_data():
+            ensure_all_price_data_up_to_date(TICKER_LIST, DATA_DIR)
+        else:
+            print("股價數據下載已由剎車機制阻止")
+    except Exception as e:
+        print(f"啟動時數據下載失敗: {e}，繼續啟動應用")
+
 if __name__ == '__main__':
-    app.run_server(debug=True, host='127.0.0.1', port=8050) 
+    # 在主線程中執行啟動任務
+    safe_startup()
+    
+    # 設置更安全的服務器配置
+    app.run_server(
+        debug=True, 
+        host='127.0.0.1', 
+        port=8050,
+        threaded=True,
+        use_reloader=False  # 避免重載器造成的線程問題
+    ) 

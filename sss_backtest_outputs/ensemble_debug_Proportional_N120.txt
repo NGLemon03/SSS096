@@ -1,0 +1,8 @@
+Ensemble 調試信息
+================
+方法: Proportional_N120
+策略數量: 120
+參數: EnsembleParams(floor=0.2, ema_span=3, delta_cap=0.2, majority_k=6, min_cooldown_days=1, min_trade_dw=0.03)
+成本: CostParams(buy_fee_bp=4.27, sell_fee_bp=4.27, sell_tax_bp=30.0)
+權重統計: min=0.2000, mean=0.7558, max=0.9991
+績效: {'total_return': 26.709181826757625, 'annual_return': 2.5553203570018685, 'max_drawdown': -0.36189934274165797, 'sharpe_ratio': 1.3650826573097052, 'calmar_ratio': 7.060859347362743, 'sortino_ratio': 1.7055473560199468, 'time_in_market': 0.8435839028094153, 'turnover_py': 1.6460326079177647, 'num_trades': 388}
