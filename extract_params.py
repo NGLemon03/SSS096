@@ -1,6 +1,13 @@
 import pandas as pd
 import json
 import os
+import logging
+
+# 設置 logger
+from analysis.logging_config import LOGGING_DICT
+import logging.config
+logging.config.dictConfig(LOGGING_DICT)
+logger = logging.getLogger("SSS.ExtractParams")
 
 def extract_params_from_csv(csv_file, trial_numbers):
     """從CSV文件中提取指定trial_number的參數"""
@@ -59,13 +66,13 @@ def generate_param_presets():
                 params = extract_params_from_csv(csv_file, [trial_num])
                 if trial_num in params:
                     all_params[name] = params[trial_num]
-                    print(f"成功提取 {name}: trial_number {trial_num}")
+                    logger.info(f"成功提取 {name}: trial_number {trial_num}")
                 else:
-                    print(f"警告: 在 {csv_file} 中未找到 trial_number {trial_num}")
+                    logger.warning(f"在 {csv_file} 中未找到 trial_number {trial_num}")
             except Exception as e:
-                print(f"錯誤: 處理 {csv_file} 時出錯: {e}")
+                logger.error(f"處理 {csv_file} 時出錯: {e}")
         else:
-            print(f"錯誤: 文件不存在 {csv_file}")
+            logger.error(f"文件不存在 {csv_file}")
     
     return all_params
 
@@ -88,21 +95,21 @@ def format_param_presets(params):
     return formatted
 
 if __name__ == "__main__":
-    print("開始提取參數...")
+    logger.info("開始提取參數...")
     params = generate_param_presets()
     
     if params:
-        print("\n提取的參數:")
+        logger.info("提取的參數:")
         formatted = format_param_presets(params)
         
-        print("\n# 生成的param_presets條目:")
+        logger.info("# 生成的param_presets條目:")
         for name, param_str in formatted.items():
-            print(f'"{name}": {param_str},')
-            
-        print("\n# 完整的param_presets字典:")
-        print("param_presets = {")
+            logger.info(f'"{name}": {param_str},')
+        
+        logger.info("# 完整的param_presets字典:")
+        logger.info("param_presets = {")
         for name, param_str in formatted.items():
-            print(f'    "{name}": {param_str},')
-        print("}")
+            logger.info(f'    "{name}": {param_str},')
+        logger.info("}")
     else:
-        print("未找到任何參數") 
+        logger.warning("未找到任何參數") 

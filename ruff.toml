@@ -1,0 +1,15 @@
+﻿line-length = 120
+target-version = "py311"
+respect-gitignore = true
+
+exclude = [
+  ".git", ".hg", ".svn",
+  "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+  ".venv", "venv", "env",
+  "build", "dist",
+  "node_modules",
+  "data", "datasets", "logs", "notebooks", "analysis", "archive", "reports"
+]
+
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

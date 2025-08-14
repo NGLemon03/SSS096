@@ -1,3 +1,35 @@
+# -*- coding: utf-8 -*-
+"""
+SSSv096.py - 股票策略系統 v0.96
+
+主要功能：
+1. 單一策略回測（single, dual, RMA）
+2. 轉向策略回測（ssma_turn）
+3. 統一回測框架
+4. 績效指標計算
+5. 圖表繪製
+
+作者：SSS Team
+版本：v0.96
+日期：2025-01-12
+"""
+
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from typing import Dict, List, Tuple, Optional
+import warnings
+import logging
+
+# 配置 logger
+from analysis.logging_config import LOGGING_DICT
+import logging.config
+logging.config.dictConfig(LOGGING_DICT)
+logger = logging.getLogger("SSS.Core")
+
+# 忽略 pandas 的 PerformanceWarning
+warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
+
 __all__ = [
     "load_data", "compute_single", "compute_dual", "compute_RMA",
     "compute_ssma_turn_combined", "backtest_unified",
@@ -1475,55 +1507,266 @@ def plot_indicators(df_ind: pd.DataFrame, strategy_type: str, trades_df: pd.Data
                       xaxis_title='Date', yaxis_title='Value', template='plotly_white')
     return fig
 
-def plot_equity_cash(trades_df: pd.DataFrame, price_df: pd.DataFrame, initial_cash: float = 100000) -> go.Figure:
+def plot_equity_cash(trades_or_ds: pd.DataFrame, df_raw: pd.DataFrame | None = None) -> go.Figure:
     """
-    繪製每日浮動權益和現金曲線,確保連續且反映收盤價變化.
+    優先接受含 ['equity','cash'] 欄位的 daily_state。
+    若傳進來的是交易表（沒有 equity/cash），才嘗試由交易重建。
+    
+    Args:
+        trades_or_ds: 每日狀態 DataFrame 或交易表 DataFrame
+        df_raw: 價格數據 DataFrame（用於重建權益曲線）
+    
+    Returns:
+        go.Figure: Plotly 圖表物件
     """
-    if trades_df.empty or price_df.empty:
-        logger.warning("交易或價格數據為空,無法繪製權益曲線.")
-        return go.Figure()
+    if isinstance(trades_or_ds, pd.DataFrame) and {'equity','cash'}.issubset(trades_or_ds.columns):
+        # 優先使用 daily_state
+        ds = trades_or_ds.copy()
+        if not np.issubdtype(ds.index.dtype, np.datetime64):
+            ds.index = pd.to_datetime(ds.index)
+        ds = ds.sort_index()
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=ds.index, y=ds['equity'], name='Equity', line=dict(color='dodgerblue')))
+        fig.add_trace(go.Scatter(x=ds.index, y=ds['cash'],   name='Cash',   line=dict(color='gray')))
+        fig.update_layout(title='權益 & 現金', xaxis_title='日期', yaxis_title='金額', template='plotly_white')
+        return fig
+    else:
+        # 舊路徑：交易表 → 標準化後重建（Ensemble 的交易表通常缺 shares，不保證成功）
+        try:
+            from SSS_EnsembleTab import normalize_trades_for_plots
+            trades_df = normalize_trades_for_plots(trades_or_ds, price_series=df_raw.get('open') if df_raw is not None else None)
+            ds = reconstruct_equity_cash_from_trades(trades_df, df_raw)  # 你既有的重建邏輯
+            
+            # 保底欄位
+            for col in ['equity', 'cash']:
+                if col not in ds.columns:
+                    raise KeyError(f"daily_state 缺少必要欄位: {col}")
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=ds.index, y=ds['equity'], name='Equity', line=dict(color='dodgerblue')))
+            fig.add_trace(go.Scatter(x=ds.index, y=ds['cash'],   name='Cash',   line=dict(color='gray')))
+            fig.update_layout(title='權益 & 現金', xaxis_title='日期', yaxis_title='金額', template='plotly_white')
+            return fig
+        except Exception as e:
+            logger.warning(f"無法從交易表重建權益曲線: {e}")
+            return go.Figure()
 
-    # 先規格化交易資料，確保有統一的 trade_date + type + price 欄位
-    trades_df = normalize_trades_for_plots(trades_df, price_series=price_df.get("open", price_df["close"]))
 
-    # 1. 建立每日時間軸
-    dates = price_df.index
+def plot_weight_series(daily_state: pd.DataFrame, trades_df: pd.DataFrame = None) -> go.Figure:
+    """
+    繪製持有權重變化圖，並標示變化點
+    
+    Args:
+        daily_state: 每日狀態 DataFrame，需包含權重相關欄位
+        trades_df: 交易資料 DataFrame，用於標示變化點（可選）
+    
+    Returns:
+        go.Figure: Plotly 圖表物件
+    """
+    ds = daily_state.copy()
+    if not isinstance(ds.index, pd.DatetimeIndex):
+        ds.index = pd.to_datetime(ds.index, errors='coerce')
+    ds = ds.sort_index()
+
+    # 優先順序：w → invested_pct → cash_pct（用 1 - cash_pct）
+    if 'w' in ds.columns:
+        w = ds['w']
+    elif 'invested_pct' in ds.columns:
+        w = ds['invested_pct']
+    elif 'cash_pct' in ds.columns:
+        w = 1 - ds['cash_pct']
+    else:
+        return go.Figure()  # 無可用欄位時回傳空圖
+
+    fig = go.Figure()
+    
+    # 主要權重曲線
+    fig.add_trace(go.Scatter(
+        x=w.index, 
+        y=w, 
+        name='持有權重',
+        line=dict(color='dodgerblue', width=2),
+        mode='lines'
+    ))
+    
+    # 如果有交易資料，標示變化點
+    if trades_df is not None and not trades_df.empty:
+        # 確保交易資料有必要的欄位
+        if 'trade_date' in trades_df.columns and 'type' in trades_df.columns:
+            # 過濾有效的交易日期
+            valid_trades = trades_df[
+                (trades_df['trade_date'].notna()) & 
+                (trades_df['trade_date'].isin(w.index))
+            ].copy()
+            
+            if not valid_trades.empty:
+                # 將交易日期轉換為datetime
+                valid_trades['trade_date'] = pd.to_datetime(valid_trades['trade_date'])
+                
+                # 為每筆交易找到對應的權重值
+                trade_points = []
+                for _, trade in valid_trades.iterrows():
+                    trade_date = trade['trade_date']
+                    if trade_date in w.index:
+                        weight_value = w.loc[trade_date]
+                        trade_type = trade['type']
+                        
+                        # 根據交易類型決定標記樣式
+                        if trade_type in ('buy', 'add'):
+                            marker_symbol = 'triangle-up'
+                            marker_color = 'green'
+                            marker_size = 10
+                        elif trade_type == 'sell':
+                            marker_symbol = 'triangle-down'
+                            marker_color = 'red'
+                            marker_size = 10
+                        else:
+                            marker_symbol = 'circle'
+                            marker_color = 'orange'
+                            marker_size = 8
+                        
+                        trade_points.append({
+                            'date': trade_date,
+                            'weight': weight_value,
+                            'type': trade_type,
+                            'symbol': marker_symbol,
+                            'color': marker_color,
+                            'size': marker_size
+                        })
+                
+                # 添加變化點標記
+                if trade_points:
+                    # 買入/加碼點
+                    buy_points = [p for p in trade_points if p['type'] in ('buy', 'add')]
+                    if buy_points:
+                        fig.add_trace(go.Scatter(
+                            x=[p['date'] for p in buy_points],
+                            y=[p['weight'] for p in buy_points],
+                            mode='markers',
+                            name='買入/加碼',
+                            marker=dict(
+                                symbol='triangle-up',
+                                size=10,
+                                color='green',
+                                line=dict(width=1, color='darkgreen')
+                            ),
+                            hovertemplate='<b>買入/加碼</b><br>日期: %{x}<br>權重: %{y:.4f}<extra></extra>'
+                        ))
+                    
+                    # 賣出點
+                    sell_points = [p for p in trade_points if p['type'] == 'sell']
+                    if sell_points:
+                        fig.add_trace(go.Scatter(
+                            x=[p['date'] for p in sell_points],
+                            y=[p['weight'] for p in sell_points],
+                            mode='markers',
+                            name='賣出',
+                            marker=dict(
+                                symbol='triangle-down',
+                                size=10,
+                                color='red',
+                                line=dict(width=1, color='darkred')
+                            ),
+                            hovertemplate='<b>賣出</b><br>日期: %{x}<br>權重: %{y:.4f}<extra></extra>'
+                        ))
+                    
+                    # 其他類型交易點
+                    other_points = [p for p in trade_points if p['type'] not in ('buy', 'add', 'sell')]
+                    if other_points:
+                        fig.add_trace(go.Scatter(
+                            x=[p['date'] for p in other_points],
+                            y=[p['weight'] for p in other_points],
+                            mode='markers',
+                            name='其他交易',
+                            marker=dict(
+                                symbol='circle',
+                                size=8,
+                                color='orange',
+                                line=dict(width=1, color='darkorange')
+                            ),
+                            hovertemplate='<b>其他交易</b><br>日期: %{x}<br>權重: %{y:.4f}<extra></extra>'
+                        ))
+    
+    # 更新圖表佈局
+    fig.update_layout(
+        title='持有權重變化',
+        xaxis_title='日期',
+        yaxis_title='權重(0~1)',
+        template='plotly_white',
+        yaxis=dict(range=[0, 1]),
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig
+
+def reconstruct_equity_cash_from_trades(trades_df: pd.DataFrame, df_raw: pd.DataFrame | None = None) -> pd.DataFrame:
+    """
+    從交易表重建權益和現金曲線
+    
+    Args:
+        trades_df: 標準化後的交易表，需有 trade_date, type, price 欄位
+        df_raw: 價格數據 DataFrame，用於計算權益
+        
+    Returns:
+        DataFrame: 包含 equity, cash 欄位的每日狀態表
+    """
+    if trades_df is None or trades_df.empty or df_raw is None or df_raw.empty:
+        return pd.DataFrame()
+    
+    # 確保有必要的欄位
+    required_cols = ['trade_date', 'type', 'price']
+    if not all(col in trades_df.columns for col in required_cols):
+        logger.warning(f"交易表缺少必要欄位: {required_cols}")
+        return pd.DataFrame()
+    
+    # 建立每日時間軸
+    dates = df_raw.index
+    initial_cash = 1_000_000.0  # 假設初始資金
+    
     cash_series = pd.Series(initial_cash, index=dates, dtype=float)
     shares_series = pd.Series(0, index=dates, dtype=float)
-
-    # 現在 trades_df 已經有統一的 trade_date 欄位，直接轉換為 Timestamp
+    
+    # 標準化交易表
     trades_df = trades_df.copy()
     trades_df['trade_date'] = pd.to_datetime(trades_df['trade_date'])
-
-    # 2. 逐筆交易更新持股和現金
+    trades_df['price'] = pd.to_numeric(trades_df['price'], errors='coerce')
+    
+    # 逐筆交易更新持股和現金
     for _, row in trades_df.iterrows():
         dt = row['trade_date']
         px = row['price']
-        if dt not in dates:
-            logger.debug(f"交易日期 {dt} 不在價格數據範圍內,跳過.")
+        
+        if pd.isna(dt) or pd.isna(px) or dt not in dates:
             continue
-        shares = row.get('shares', 0)
+            
+        # 假設每次交易都是 1000 股（因為 Ensemble 交易表通常沒有 shares 欄位）
+        shares = 1000
+        
         if row['type'] in ('buy', 'add'):
             shares_series.loc[dt:] += shares
             cash_series.loc[dt:] -= shares * px
         elif row['type'] == 'sell':
             shares_series.loc[dt:] = 0
             cash_series.loc[dt:] += shares * px
-
-    # 3. 計算每日浮動權益 = 現金 + 持股 x 收盤價
-    equity_series = cash_series + shares_series * price_df['close']
-
-    # 4. 繪製圖表
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=dates, y=equity_series, name='淨值', line=dict(color='dodgerblue')))
-    fig.add_trace(go.Scatter(x=dates, y=cash_series, name='現金', line=dict(color='limegreen')))
-    fig.update_layout(
-        title='每日淨值與現金曲線',
-        xaxis_title='日期',
-        yaxis_title='數值',
-        template='plotly_white'
-    )
-    return fig
+    
+    # 計算每日浮動權益 = 現金 + 持股 x 收盤價
+    equity_series = cash_series + shares_series * df_raw['close']
+    
+    # 構建結果 DataFrame
+    result = pd.DataFrame({
+        'equity': equity_series,
+        'cash': cash_series
+    })
+    
+    return result
 def display_metrics_flex(metrics: dict):
     """
     將 metrics 這個字典裡面的 (指標名 → 數值) 轉成 HTML Flexbox 格式自動換行的卡片顯示.

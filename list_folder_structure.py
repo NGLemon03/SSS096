@@ -9,6 +9,13 @@ import os
 from pathlib import Path
 import json
 from datetime import datetime
+import logging
+
+# 設置 logger
+from analysis.logging_config import LOGGING_DICT
+import logging.config
+logging.config.dictConfig(LOGGING_DICT)
+logger = logging.getLogger("SSS.ListFolder")
 
 def get_file_size_str(size_bytes):
     """將字節數轉換為人類可讀的文件大小字符串"""
@@ -105,9 +112,9 @@ def print_structure(data, indent=0, show_details=True):
     prefix = "  " * indent
     
     if data["type"] == "directory":
-        print(f"{prefix}📁 {data['name']}/")
+        logger.info(f"{prefix}📁 {data['name']}/")
         if show_details:
-            print(f"{prefix}   📊 文件: {data['file_count']}, 文件夾: {data['dir_count']}, 總大小: {data['size_str']}")
+            logger.info(f"{prefix}   📊 文件: {data['file_count']}, 文件夾: {data['dir_count']}, 總大小: {data['size_str']}")
         
         # 遞歸打印子項目
         for item in data["items"]:
@@ -115,9 +122,9 @@ def print_structure(data, indent=0, show_details=True):
     
     elif data["type"] == "file":
         if show_details:
-            print(f"{prefix}📄 {data['name']} ({data['size_str']}, {data['modified']})")
-        else:
-            print(f"{prefix}📄 {data['name']}")
+                    logger.info(f"{prefix}📄 {data['name']} ({data['size_str']}, {data['modified']})")
+    else:
+        logger.info(f"{prefix}📄 {data['name']}")
 
 def print_structure_to_list(data, output_lines, indent=0, show_details=True):
     """將目錄結構輸出到列表中"""
@@ -226,14 +233,14 @@ def main():
         # 保存到文件
         with open(args.output, 'w', encoding='utf-8') as f:
             f.write('\n'.join(output_lines))
-        print("❌ 無法訪問指定目錄")
+        logger.error("❌ 無法訪問指定目錄")
         return
     
     if args.json:
         # 輸出JSON格式
         json_output = json.dumps(data, indent=2, ensure_ascii=False)
         output_lines.append(json_output)
-        print(json_output)
+        logger.info(json_output)
     elif args.summary:
         # 只顯示統計摘要
         summary = generate_summary(data)
@@ -258,7 +265,7 @@ def main():
                 output_lines.append(f"  {i:2d}. {dir_info['name']}/ ({dir_info['size_str']})")
         
         # 打印到控制枱
-        print('\n'.join(output_lines))
+        logger.info('\n'.join(output_lines))
     
     else:
         # 顯示完整結構
@@ -278,15 +285,15 @@ def main():
             output_lines.append(f"文件類型數: {len(summary['file_extensions'])}")
         
         # 打印到控制枱
-        print('\n'.join(output_lines))
+        logger.info('\n'.join(output_lines))
     
     # 保存到文件
     try:
         with open(args.output, 'w', encoding='utf-8') as f:
             f.write('\n'.join(output_lines))
-        print(f"\n💾 結果已保存到: {args.output}")
+        logger.info(f"💾 結果已保存到: {args.output}")
     except Exception as e:
-        print(f"\n❌ 保存文件失敗: {e}")
+        logger.error(f"❌ 保存文件失敗: {e}")
 
 if __name__ == "__main__":
     main()

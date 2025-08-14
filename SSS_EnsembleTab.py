@@ -43,17 +43,21 @@ import numpy as np
 import pandas as pd
 
 # 設置 logger
-logger = logging.getLogger(__name__)
+from analysis.logging_config import LOGGING_DICT
+import logging.config
+logging.config.dictConfig(LOGGING_DICT)
+logger = logging.getLogger("SSS.Ensemble")
 
 # ---------------------------------------------------------------------
 # 統一交易明細契約標準化函式
 # ---------------------------------------------------------------------
 
-def _normalize_trades_for_ui(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_trades_for_plots(df: pd.DataFrame, price_series: pd.Series | None = None) -> pd.DataFrame:
     """標準化交易明細為統一契約，確保至少有 trade_date/type/price 三欄
     
     Args:
         df: 原始交易明細 DataFrame
+        price_series: 價格序列，用於補充缺失的價格欄位
         
     Returns:
         標準化後的 DataFrame，包含 trade_date, type, price 三欄
@@ -62,12 +66,12 @@ def _normalize_trades_for_ui(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=["trade_date", "type", "price"])
     
     out = df.copy()
-    out.columns = [c.lower() for c in out.columns]
+    out.columns = [str(c).lower() for c in out.columns]
     
     # 日期欄
     if "trade_date" not in out.columns:
         if "date" in out.columns:
-            out["trade_date"] = pd.to_datetime(out["date"])
+            out["trade_date"] = pd.to_datetime(out["date"], errors="coerce")
         elif isinstance(out.index, pd.DatetimeIndex):
             out = out.reset_index().rename(columns={"index": "trade_date"})
         else:
@@ -95,14 +99,125 @@ def _normalize_trades_for_ui(df: pd.DataFrame) -> pd.DataFrame:
                 out["price"] = out[c]
                 break
         if "price" not in out.columns:
+            # 如果還是沒有價格，嘗試從 price_series 補充
+            if price_series is not None and "trade_date" in out.columns:
+                out["price"] = out["trade_date"].map(price_series)
+            else:
+                out["price"] = np.nan
+    
+    return out[["trade_date", "type", "price"]].dropna()
+
+
+def normalize_trades_for_ui(df: pd.DataFrame) -> pd.DataFrame:
+    """標準化交易明細為統一契約，確保至少有 trade_date/type/price 三欄
+    
+    Args:
+        df: 原始交易明細 DataFrame
+        
+    Returns:
+        標準化後的 DataFrame，包含 trade_date, type, price 三欄
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame(columns=["trade_date", "type", "price"])
+    
+    out = df.copy()
+    out.columns = [str(c).lower() for c in out.columns]
+    
+    # 日期欄
+    if "trade_date" not in out.columns:
+        if "date" in out.columns:
+            out["trade_date"] = pd.to_datetime(out["date"], errors="coerce")
+        elif isinstance(out.index, pd.DatetimeIndex):
+            out = out.reset_index().rename(columns={"index": "trade_date"})
+        else:
+            out["trade_date"] = pd.NaT
+    else:
+        out["trade_date"] = pd.to_datetime(out["trade_date"], errors="coerce")
+    
+    # 動作欄
+    if "type" not in out.columns:
+        if "side" in out.columns:
+            out["type"] = out["side"].astype(str).str.lower()
+        elif "action" in out.columns:
+            out["type"] = out["action"].astype(str).str.lower()
+        elif "dw" in out.columns:
+            # 退而求其次：用權重變化推斷
+            out["type"] = np.where(out["dw"] > 0, "buy",
+                            np.where(out["dw"] < 0, "sell", "hold"))
+        else:
+            out["type"] = "hold"
+    
+    # 價格欄（含更多容錯）
+    if "price" not in out.columns:
+        for c in ("open","price_open","exec_price","px","entry_price","price_after","close"):
+            if c in out.columns:
+                out["price"] = out[c]
+                break
+        if "price" not in out.columns:
             out["price"] = np.nan
     
-    # 最少三欄按時間排序
-    base_cols = ["trade_date", "type", "price"]
-    extra = [c for c in out.columns if c not in base_cols]
-    out = out[base_cols + extra].sort_values("trade_date")
+    # 進階欄位別名整合（存在才帶出）
+    alias = {
+        "weight_change": ["weight_change","dw","delta_w"],
+        "delta_units":   ["delta_units","units_delta","unit_delta","share_delta"],
+        "exec_notional": ["exec_notional","notional","amount"],
+        "w_before":      ["w_before","w_prev"],
+        "w_after":       ["w_after","w_next"],
+        "shares_before": ["shares_before","units_before"],
+        "shares_after":  ["shares_after","units_after","units","shares"],
+        "cash_after":    ["cash_after","cash_post","cash"],
+        "equity_after":  ["equity_after","equity"],
+        "sell_tax":      ["sell_tax","tax"],
+    }
+    for tgt, cands in alias.items():
+        if tgt not in out.columns:
+            for c in cands:
+                if c in out.columns:
+                    out[tgt] = out[c]; break
+    if "weight_change" not in out.columns and {"w_before","w_after"} <= set(out.columns):
+        out["weight_change"] = out["w_after"] - out["w_before"]
+
+    # 最少三欄，保序擴充；舊端只讀前三欄也不會壞
+    base = ["trade_date","type","price"]
+    preferred = [
+        "weight_change","delta_units","exec_notional","w_before","w_after",
+        "shares_before","shares_after","equity_after","cash_after",
+        "invested_pct","cash_pct","position_value","fee_buy","fee_sell","sell_tax","comment"
+    ]
+    cols = base + [c for c in preferred if c in out.columns] + [c for c in out.columns if c not in base+preferred]
+    out = out[cols].sort_values("trade_date")
     
     return out
+
+# ---------------------------------------------------------------------
+# 序列化工具函式
+# ---------------------------------------------------------------------
+
+def pack_df(df: pd.DataFrame) -> str:
+    """將 DataFrame 序列化為 JSON 字串，使用 orient="split" + date_format="iso"
+    
+    Args:
+        df: 要序列化的 DataFrame
+        
+    Returns:
+        JSON 字串，空 DataFrame 回傳空字串
+    """
+    if df is None or len(df) == 0:
+        return ""
+    return df.to_json(orient="split", date_format="iso")
+
+def pack_series(s: pd.Series) -> str:
+    """將 Series 序列化為 JSON 字串，使用 orient="split" + date_format="iso"
+    
+    Args:
+        s: 要序列化的 Series
+        
+    Returns:
+        JSON 字串，空 Series 回傳空字串
+    """
+    if s is None or len(s) == 0:
+        return ""
+    return s.to_json(orient="split", date_format="iso")
 
 # ---------------------------------------------------------------------
 # 路徑設定：以目前檔案所在資料夾為工作根目錄（符合你的習慣）
@@ -382,6 +497,175 @@ class CostParams:
     def sell_tax_rate(self) -> float:
         return self.sell_tax_bp / 10000.0
 
+def build_portfolio_ledger(open_px: pd.Series, w: pd.Series, cost: CostParams, 
+                          initial_capital: float = 1_000_000.0, lot_size: int | None = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    依照每日 open 價與目標權重 w_t（含 floor、delta_cap 等限制後的最終 w_t），
+    產出兩個 DataFrame：
+      1) daily_state: 每日現金/持倉/總資產/權重
+      2) trade_ledger: 只有權重變動日的交易明細（買賣金額、費用、稅、交易後資產）
+    """
+    if cost is None:
+        cost = CostParams()
+    
+    # 計算日報酬率
+    r = open_px.shift(-1) / open_px - 1
+    r = r.dropna()
+    
+    # 權益曲線
+    E = pd.Series(index=r.index, dtype=float)
+    E.iloc[0] = initial_capital
+    
+    # 現金曲線
+    cash = pd.Series(index=r.index, dtype=float)
+    cash.iloc[0] = initial_capital
+    
+    # 持倉價值曲線
+    position_value = pd.Series(index=r.index, dtype=float)
+    position_value.iloc[0] = 0.0
+    
+    # 交易記錄
+    trades = []
+    
+    # 交易流水帳（詳細記錄）
+    trade_ledger = []
+    
+    for i in range(1, len(r)):
+        prev_w = w.iloc[i-1] if i-1 < len(w) else 0
+        curr_w = w.iloc[i] if i < len(w) else 0
+        
+        # 權重變化
+        dw = curr_w - prev_w
+        
+        if abs(dw) > 0.001:  # 有顯著變化
+            # 1) 以「總權益」計執行名目金額
+            exec_notional = abs(dw) * E.iloc[i-1]
+            
+            if dw > 0:  # 買入
+                c = exec_notional * cost.buy_rate
+                tax = 0.0
+                total_cost = c
+
+                # 計算顯示用股數（僅供 UI/報表，不影響邏輯）
+                px = float(open_px.iloc[i])
+                shares_before = (prev_w * E.iloc[i-1]) / px if px > 0 else 0.0
+                delta_units   =  exec_notional / px if px > 0 else 0.0
+                shares_after  = shares_before + delta_units
+
+                # 交易明細（給圖表/表格）—補上權重欄位（買入也有）
+                trades.append({
+                    'trade_date': r.index[i],
+                    'type': 'buy',
+                    'price_open': open_px.iloc[i],
+                    'weight_change': dw,          # 用 signed dw，買為正、賣為負
+                    'w_before': prev_w,
+                    'w_after': curr_w,
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'cost': total_cost
+                })
+
+                # 交易流水帳（詳細）
+                trade_ledger.append({
+                    'date': r.index[i],
+                    'type': 'buy',
+                    'open': open_px.iloc[i],
+                    'delta_units': delta_units,
+                    'exec_notional': exec_notional,
+                    'fee_buy': c,
+                    'fee_sell': 0.0,
+                    'tax': tax,  # 賣出才會有證交稅，這裡為 0
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'w_before': prev_w,
+                    'w_after': curr_w,
+                    'cash_after': cash.iloc[i-1] - exec_notional - c,
+                    'equity_open_after_trade': E.iloc[i-1] - total_cost,
+                    'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
+                })
+            else:  # 賣出
+                c = exec_notional * cost.sell_rate
+                tax = exec_notional * cost.sell_tax_rate
+                total_cost = c + tax
+
+                # 計算顯示用股數（僅供 UI/報表，不影響邏輯）
+                px = float(open_px.iloc[i])
+                shares_before = (prev_w * E.iloc[i-1]) / px if px > 0 else 0.0
+                delta_units   = -exec_notional / px if px > 0 else 0.0
+                shares_after  = shares_before + delta_units
+
+                # 交易明細（給圖表/表格）—補上權重欄位
+                trades.append({
+                    'trade_date': r.index[i],
+                    'type': 'sell',
+                    'price_open': open_px.iloc[i],
+                    'weight_change': dw,          # 注意：保留 signed（賣出為負）
+                    'w_before': prev_w,
+                    'w_after': curr_w,
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'cost': total_cost
+                })
+
+                # 交易流水帳（詳細）
+                trade_ledger.append({
+                    'date': r.index[i],
+                    'type': 'sell',
+                    'open': open_px.iloc[i],
+                    'delta_units': delta_units,
+                    'exec_notional': exec_notional,
+                    'fee_buy': 0.0,
+                    'fee_sell': c,
+                    'tax': tax,
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'w_before': prev_w,
+                    'w_after': curr_w,
+                    'cash_after': cash.iloc[i-1] + exec_notional - total_cost,
+                    'equity_open_after_trade': E.iloc[i-1] - total_cost,
+                    'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
+                })
+            
+            # 扣除交易成本
+            E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
+            cash.iloc[i] = cash.iloc[i-1] - (dw * E.iloc[i-1] + total_cost) if dw > 0 else cash.iloc[i-1] + (abs(dw) * E.iloc[i-1] - total_cost)
+        else:
+            E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w)
+            cash.iloc[i] = cash.iloc[i-1]
+        
+        # 計算持倉價值
+        position_value.iloc[i] = E.iloc[i] - cash.iloc[i]
+    
+    # 補齊權益曲線和現金曲線（包括沒有交易的天數）
+    E = E.reindex(open_px.index).ffill().fillna(initial_capital)
+    cash = cash.reindex(open_px.index).ffill().fillna(initial_capital)
+    position_value = position_value.reindex(open_px.index).ffill().fillna(0.0)
+    
+    # 轉換交易記錄為 DataFrame
+    if trades:
+        trades_df = pd.DataFrame(trades)
+    else:
+        trades_df = pd.DataFrame(columns=['trade_date', 'type', 'price_open', 'weight_change', 'cost'])
+    
+    # 轉換交易流水帳為 DataFrame
+    if trade_ledger:
+        trade_ledger_df = pd.DataFrame(trade_ledger)
+    else:
+        trade_ledger_df = pd.DataFrame(columns=['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'cash_after', 'equity_after'])
+    
+    # 構建每日狀態 DataFrame
+    daily_state = pd.DataFrame({
+        'equity': E,
+        'cash': cash,
+        'position_value': position_value,
+        'w': w.reindex(open_px.index).fillna(0),
+        'invested_pct': position_value / E,
+        'cash_pct': cash / E
+    })
+    
+    return daily_state, trade_ledger_df
+
+
 def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | None = None,
                         start_equity: float = 1.0) -> Tuple[pd.Series, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """計算 Open-to-Open 權益曲線、交易記錄、每日狀態和交易流水帳"""
@@ -414,61 +698,97 @@ def equity_open_to_open(open_px: pd.Series, w: pd.Series, cost: CostParams | Non
         dw = curr_w - prev_w
         
         if abs(dw) > 0.001:  # 有顯著變化
+            # 1) 以「總權益」計執行名目金額
+            exec_notional = abs(dw) * E.iloc[i-1]
+            
             if dw > 0:  # 買入
-                c = dw * cost.buy_rate
-                exec_notional = dw * open_px.iloc[i]
+                c = exec_notional * cost.buy_rate
+                tax = 0.0
+                total_cost = c
+
+                # 計算顯示用股數（僅供 UI/報表，不影響邏輯）
+                px = float(open_px.iloc[i])
+                shares_before = (prev_w * E.iloc[i-1]) / px if px > 0 else 0.0
+                delta_units   =  exec_notional / px if px > 0 else 0.0
+                shares_after  = shares_before + delta_units
+
+                # 交易明細（給圖表/表格）—補上權重欄位（買入也有）
                 trades.append({
                     'trade_date': r.index[i],
                     'type': 'buy',
                     'price_open': open_px.iloc[i],
-                    'weight_change': dw,
-                    'cost': c
+                    'weight_change': dw,          # 用 signed dw，買為正、賣為負
+                    'w_before': prev_w,
+                    'w_after': curr_w,
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'cost': total_cost
                 })
-                
-                # 交易流水帳
+
+                # 交易流水帳（詳細）
                 trade_ledger.append({
                     'date': r.index[i],
-                    'type': 'buy',  # 統一使用 type 欄位
+                    'type': 'buy',
                     'open': open_px.iloc[i],
-                    'delta_units': dw,
+                    'delta_units': delta_units,
                     'exec_notional': exec_notional,
                     'fee_buy': c,
                     'fee_sell': 0.0,
-                    'tax': 0.0,
+                    'tax': tax,  # 賣出才會有證交稅，這裡為 0
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'w_before': prev_w,
+                    'w_after': curr_w,
                     'cash_after': cash.iloc[i-1] - exec_notional - c,
-                    'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - c
+                    'equity_open_after_trade': E.iloc[i-1] - total_cost,
+                    'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
                 })
             else:  # 賣出
-                c = abs(dw) * cost.sell_rate
-                exec_notional = abs(dw) * open_px.iloc[i]
-                tax = abs(dw) * cost.sell_tax_rate
+                c = exec_notional * cost.sell_rate
+                tax = exec_notional * cost.sell_tax_rate
                 total_cost = c + tax
-                
+
+                # 計算顯示用股數（僅供 UI/報表，不影響邏輯）
+                px = float(open_px.iloc[i])
+                shares_before = (prev_w * E.iloc[i-1]) / px if px > 0 else 0.0
+                delta_units   = -exec_notional / px if px > 0 else 0.0
+                shares_after  = shares_before + delta_units
+
+                # 交易明細（給圖表/表格）—補上權重欄位
                 trades.append({
                     'trade_date': r.index[i],
                     'type': 'sell',
                     'price_open': open_px.iloc[i],
-                    'weight_change': abs(dw),
+                    'weight_change': dw,          # 注意：保留 signed（賣出為負）
+                    'w_before': prev_w,
+                    'w_after': curr_w,
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
                     'cost': total_cost
                 })
-                
-                # 交易流水帳
+
+                # 交易流水帳（詳細）
                 trade_ledger.append({
                     'date': r.index[i],
-                    'type': 'sell',  # 統一使用 type 欄位
+                    'type': 'sell',
                     'open': open_px.iloc[i],
-                    'delta_units': abs(dw),
+                    'delta_units': delta_units,
                     'exec_notional': exec_notional,
                     'fee_buy': 0.0,
                     'fee_sell': c,
                     'tax': tax,
+                    'shares_before': shares_before,
+                    'shares_after': shares_after,
+                    'w_before': prev_w,
+                    'w_after': curr_w,
                     'cash_after': cash.iloc[i-1] + exec_notional - total_cost,
+                    'equity_open_after_trade': E.iloc[i-1] - total_cost,
                     'equity_after': E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
                 })
             
             # 扣除交易成本
-            E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - c
-            cash.iloc[i] = cash.iloc[i-1] - (dw * open_px.iloc[i] + c) if dw > 0 else cash.iloc[i-1] + (abs(dw) * open_px.iloc[i] - c)
+            E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w) - total_cost
+            cash.iloc[i] = cash.iloc[i-1] - (dw * E.iloc[i-1] + total_cost) if dw > 0 else cash.iloc[i-1] + (abs(dw) * E.iloc[i-1] - total_cost)
         else:
             E.iloc[i] = E.iloc[i-1] * (1 + r.iloc[i] * curr_w)
             cash.iloc[i] = cash.iloc[i-1]
@@ -656,6 +976,24 @@ def run_ensemble(cfg: RunConfig) -> Tuple[pd.Series, pd.Series, pd.DataFrame, Di
     # 權益與事件（Open→Open）
     equity, trades, daily_state, trade_ledger = equity_open_to_open(px["open"], w, cfg.cost, start_equity=1.0)
     
+    # 以開盤價模擬資產曲線
+    open_px = px['open'].copy()  # 你現有的價格列
+    daily_state, trade_ledger = build_portfolio_ledger(
+        open_px=open_px,
+        w=w,                    # 你要落地的最終權重序列（已經過 floor/ema/delta_cap/cooldown）
+        cost=cfg.cost,          # 你的 CostParams
+        initial_capital=1_000_000.0,
+        lot_size=None            # 若要整股就給 1000 or 1，否則 None 允許小數
+    )
+    
+    # 統一欄位格式（避免之後序列化麻煩）
+    daily_state = daily_state.copy()
+    daily_state.index = pd.to_datetime(daily_state.index)
+    daily_state.index.name = 'date'
+    for col in ['equity', 'cash', 'position_value', 'invested_pct', 'cash_pct', 'w']:
+        if col not in daily_state.columns:
+            daily_state[col] = np.nan
+    
     # 調試信息：Open→Open 報酬統計
     r_oo = (px['open'].shift(-1) / px['open'] - 1).dropna()
     logger.info(f"[Ensemble] r_oo mean={r_oo.mean():.4f}, std={r_oo.std():.4f}, count={len(r_oo)}")
@@ -667,8 +1005,8 @@ def run_ensemble(cfg: RunConfig) -> Tuple[pd.Series, pd.Series, pd.DataFrame, Di
     logger.info(f"[Ensemble] 績效摘要: 總報酬={stats.get('total_return', 0):.4f}, 年化={stats.get('annual_return', 0):.4f}, 最大回撤={stats.get('max_drawdown', 0):.4f}")
     
     # 標準化交易明細為統一契約
-    trades_ui = _normalize_trades_for_ui(trades)
-    trade_ledger_ui = _normalize_trades_for_ui(trade_ledger)
+    trades_ui = normalize_trades_for_ui(trades)
+    trade_ledger_ui = normalize_trades_for_ui(trade_ledger)
     
     # 調試信息：標準化後的交易明細
     logger.info(f"[Ensemble] 標準化後 trades_ui 欄位: {list(trades_ui.columns)}")
@@ -888,6 +1226,101 @@ def streamlit_ensemble_ui():
             with col8:
                 st.metric("卡瑪比率", f"{stats.get('calmar_ratio', 0):.2f}")
                 st.metric("交易次數", stats.get('num_trades', 0))
+            
+            # === 新增：交易明細顯示 ===
+            st.subheader("交易明細 (trade_ledger)")
+            if trade_ledger is not None and not trade_ledger.empty:
+                # 使用 normalize_trades_for_ui 標準化交易明細
+                trades_ui = normalize_trades_for_ui(trade_ledger)
+                
+                # === 新增：刪除費用欄位（僅UI層移除顯示） ===
+                cols_to_hide = ['fee_buy','fee_sell','sell_tax','tax','shares_before','shares_after']
+                trades_ui = trades_ui.drop(columns=[c for c in cols_to_hide if c in trades_ui.columns], errors='ignore')
+                
+                # === 新增：統一數字格式 ===
+                # 價格格式化
+                if 'price' in trades_ui.columns:
+                    trades_ui['price'] = trades_ui['price'].apply(
+                        lambda x: f"{x:,.2f}" if pd.notnull(x) else ""
+                    )
+                
+                # 金額/數量/權重等格式化
+                for col in ['exec_notional','weight_change','w_before','w_after','delta_units',
+                            'cash_after','equity_after','position_value']:
+                    if col in trades_ui.columns:
+                        trades_ui[col] = trades_ui[col].apply(
+                            lambda x: f"{x:,.4f}" if pd.notnull(x) else ""
+                        )
+                
+                # 百分比格式化
+                for col in ['invested_pct','cash_pct']:
+                    if col in trades_ui.columns:
+                        trades_ui[col] = trades_ui[col].apply(
+                            lambda x: f"{x:.2%}" if pd.notnull(x) else ""
+                        )
+                
+                # 將欄位名稱轉換為中文
+                trades_ui_zh = trades_ui.copy()
+                column_mapping = {
+                    'trade_date': '交易日期',
+                    'type': '交易類型',
+                    'price': '價格',
+                    'weight_change': '權重變化',
+                    'delta_units': '股數變化',
+                    'exec_notional': '執行金額',
+                    'w_before': '交易前權重',
+                    'w_after': '交易後權重',
+                    'shares_before': '交易前股數',
+                    'shares_after': '交易後股數',
+                    'equity_after': '交易後權益',
+                    'cash_after': '交易後現金',
+                    'invested_pct': '投資比例',
+                    'cash_pct': '現金比例',
+                    'position_value': '部位價值',
+                    'comment': '備註'
+                }
+                # 只重命名存在的欄位
+                existing_columns = {k: v for k, v in column_mapping.items() if k in trades_ui_zh.columns}
+                trades_ui_zh = trades_ui_zh.rename(columns=existing_columns)
+                st.dataframe(trades_ui_zh)
+            else:
+                st.info("無交易明細資料")
+            
+            # === 新增：資金權重顯示 ===
+            st.subheader("資金權重")
+            if daily_state is not None and not daily_state.empty:
+                # 選擇要顯示的欄位（只顯示存在的欄位）
+                display_columns = ['equity', 'cash', 'w', 'invested_pct', 'cash_pct', 'position_value']
+                available_columns = [col for col in display_columns if col in daily_state.columns]
+                
+                if available_columns:
+                    daily_state_display = daily_state[available_columns].copy()
+                    # 將欄位名稱轉換為中文
+                    column_mapping_ds = {
+                        'equity': '權益',
+                        'cash': '現金',
+                        'w': '權重',
+                        'invested_pct': '投資比例',
+                        'cash_pct': '現金比例',
+                        'position_value': '部位價值'
+                    }
+                    # 只重命名存在的欄位
+                    existing_columns_ds = {k: v for k, v in column_mapping_ds.items() if k in daily_state_display.columns}
+                    daily_state_display = daily_state_display.rename(columns=existing_columns_ds)
+                    st.dataframe(daily_state_display)
+                else:
+                    st.info("無可顯示的資金權重資料")
+            else:
+                st.info("無每日狀態資料")
+            
+            # === 新增：持有權重變化圖 ===
+            st.subheader("持有權重變化")
+            if daily_state is not None and not daily_state.empty:
+                from SSSv096 import plot_weight_series
+                fig_w = plot_weight_series(daily_state, trade_ledger)
+                st.plotly_chart(fig_w, use_container_width=True)
+            else:
+                st.info("無每日狀態資料，無法顯示權重變化圖")
             
             # 保存輸出
             save_outputs(method_name, open_px, w, trades, stats, equity, cost, daily_state, trade_ledger)

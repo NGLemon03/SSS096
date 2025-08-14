@@ -224,7 +224,7 @@ def run_ensemble_with_strategies(method: str,
         }
         
     except Exception as e:
-        print(f"運行 ensemble 策略失敗: {e}")
+        logger.error(f"運行 ensemble 策略失敗: {e}")
         return None
 
 def scan_ensemble_parameters(method: str,

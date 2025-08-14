@@ -75,7 +75,6 @@ param_cols = [
 feather_file = DATA_DIR / "grid_ALL_00631L.TW.feather"
 if feather_file.exists():
     df = feather.read_feather(feather_file)
-    print("從 Feather 檔案載入資料")
     logging.info("從 Feather 檔案載入資料")
 else:
     file_path = RESULT_DIR / "grid_ALL_00631L.TW.csv"
@@ -83,21 +82,18 @@ else:
     cols_keep = list(set(param_cols + perf_metrics + optional_metrics + ['strategy', 'data_source']) & set(raw_df.columns))
     df = raw_df[cols_keep].copy()
     feather.write_feather(df.reset_index(drop=True), feather_file)
-    print("已將資料儲存為 Feather 檔案")
     logging.info("已將資料儲存為 Feather 檔案")
 
 # 修正勝率（若需要）
 if 'win_rate' in df.columns:
     df['win_rate'] = df['win_rate'] * 2
-    print("已將 win_rate 乘以 2 進行修正")
     logging.info("已將 win_rate 乘以 2 進行修正")
 
 df = df.dropna(subset=perf_metrics, how='any')
 
 # Debug 檢查
-print(f"讀檔後 df.shape = {df.shape}")
 logging.info(f"讀檔後 df.shape = {df.shape}")
-print("欄位清單：", df.columns.tolist()[:20], "...")
+logging.info(f"欄位清單：{df.columns.tolist()[:20]}...")
 logging.info(f"欄位清單： {df.columns.tolist()[:20]} ...")
 print("前幾行：\n", df.head())
 logging.info(f"前幾行資料：\n{df.head()}")

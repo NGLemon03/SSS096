@@ -22,11 +22,17 @@ from datetime import datetime
 import yaml
 
 # 設置日誌
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+try:
+    from analysis.logging_config import setup_logging, get_logger
+    setup_logging()
+    logger = get_logger("workflow")
+except ImportError:
+    # 後備方案：如果無法導入專案日誌配置，使用基本配置
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
 
 def load_config():
     """加載配置文件"""

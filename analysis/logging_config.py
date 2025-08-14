@@ -8,6 +8,12 @@ ROOT = Path(__file__).resolve().parent
 LOG_DIR = ROOT / "log"
 LOG_DIR.mkdir(exist_ok=True)
 
+# 創建新的目錄結構
+(LOG_DIR / "app").mkdir(exist_ok=True)
+(LOG_DIR / "core").mkdir(exist_ok=True)
+(LOG_DIR / "ensemble").mkdir(exist_ok=True)
+(LOG_DIR / "errors").mkdir(exist_ok=True)
+
 # 生成時間戳記用於日誌檔案名稱
 TIMESTAMP = datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -34,6 +40,30 @@ LOGGING_DICT = {
         "console_debug": {
             "class": "logging.StreamHandler",
             "formatter": "detailed",
+            "level": "DEBUG",
+        },
+        # 新增：App 相關日誌
+        "app_file": {
+            "class": "logging.FileHandler",
+            "formatter": "detailed",
+            "filename": str(LOG_DIR / "app" / f"app_dash_{TIMESTAMP}.log"),
+            "encoding": "utf-8-sig",
+            "level": "DEBUG",
+        },
+        # 新增：SSS Core 相關日誌
+        "sss_core_file": {
+            "class": "logging.FileHandler",
+            "formatter": "detailed",
+            "filename": str(LOG_DIR / "core" / f"sss_core_{TIMESTAMP}.log"),
+            "encoding": "utf-8-sig",
+            "level": "DEBUG",
+        },
+        # 新增：Ensemble 相關日誌
+        "ensemble_file": {
+            "class": "logging.FileHandler",
+            "formatter": "detailed",
+            "filename": str(LOG_DIR / "ensemble" / f"ensemble_{TIMESTAMP}.log"),
+            "encoding": "utf-8-sig",
             "level": "DEBUG",
         },
         # SSS 相關日誌
@@ -116,7 +146,7 @@ LOGGING_DICT = {
         "error_file": {
             "class": "logging.FileHandler",
             "formatter": "detailed",
-            "filename": str(LOG_DIR / f"Errors_{TIMESTAMP}.log"),
+            "filename": str(LOG_DIR / "errors" / f"exceptions_{TIMESTAMP}.log"),
             "encoding": "utf-8-sig",
             "level": "ERROR",
         },
@@ -126,6 +156,23 @@ LOGGING_DICT = {
         "": {
             "handlers": ["console", "system_file"],
             "level": "INFO",
+            "propagate": False,
+        },
+        
+        # 新增：三個主要 logger
+        "SSS.App": {
+            "handlers": ["console", "app_file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "SSS.Core": {
+            "handlers": ["console", "sss_core_file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "SSS.Ensemble": {
+            "handlers": ["console", "ensemble_file"],
+            "level": "DEBUG",
             "propagate": False,
         },
         
@@ -292,5 +339,9 @@ LOGGER_NAMES = {
     "BACKTEST": "backtest",
     "METRICS": "metrics",
     "SYSTEM": "",
-    "ERRORS": "errors"
+    "ERRORS": "errors",
+    # 新增：三個主要 logger
+    "APP": "SSS.App",
+    "CORE": "SSS.Core", 
+    "ENSEMBLE": "SSS.Ensemble"
 }

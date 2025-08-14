@@ -2,9 +2,9 @@ Ensemble 調試信息
 ================
 方法: Proportional_N120
 策略數量: 120
-參數: EnsembleParams(floor=0.2, ema_span=3, delta_cap=0.3, majority_k=6, min_cooldown_days=1, min_trade_dw=0.01)
+參數: EnsembleParams(floor=0.2, ema_span=3, delta_cap=0.2, majority_k=6, min_cooldown_days=1, min_trade_dw=0.03)
 成本: CostParams(buy_fee_bp=4.27, sell_fee_bp=4.27, sell_tax_bp=30.0)
-權重統計: min=0.2000, mean=0.7576, max=1.0000
-績效: {'total_return': 26.85760110517039, 'annual_return': 2.569519923501495, 'max_drawdown': -0.3709553694008668, 'sharpe_ratio': 1.3614770163259233, 'calmar_ratio': 6.926762989444117, 'sortino_ratio': 1.6952018111577276, 'time_in_market': 0.8428246013667426, 'turnover_py': 1.793056149006756, 'num_trades': 818}
-交易明細欄位: trades=['trade_date', 'type', 'price', 'price_open', 'weight_change', 'cost'], trade_ledger=['trade_date', 'type', 'price', 'date', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'cash_after', 'equity_after']
-交易筆數: trades=816, trade_ledger=816
+權重統計: min=0.2000, mean=0.7554, max=0.9991
+績效: {'total_return': 25.71171828028521, 'annual_return': 2.458024661089482, 'max_drawdown': -0.36232905017060413, 'sharpe_ratio': 1.3507555064305723, 'calmar_ratio': 6.783956903075011, 'sortino_ratio': 1.687183030211853, 'time_in_market': 0.8429438543247344, 'turnover_py': 1.6655408935744722, 'num_trades': 390}
+交易明細欄位: trades=['trade_date', 'type', 'price', 'weight_change', 'w_before', 'w_after', 'shares_before', 'shares_after', 'price_open', 'cost'], trade_ledger=['trade_date', 'type', 'price', 'weight_change', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'shares_before', 'shares_after', 'equity_after', 'cash_after', 'fee_buy', 'fee_sell', 'sell_tax', 'date', 'open', 'tax', 'equity_open_after_trade']
+交易筆數: trades=388, trade_ledger=388
