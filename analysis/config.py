@@ -6,7 +6,7 @@
     - 定義數據路徑、交易成本、參數範圍等
     - 提供壓力測試時段與參數網格
 
-
+修改記錄：2025-01-12 - 移除 import 時自動建立目錄的副作用，改為按需建立 API
 """
 
 import os
@@ -28,14 +28,34 @@ GRIDS_DIR = PROJECT_ROOT / "analysis" / "grids"
 PRESETS_DIR = PROJECT_ROOT / "analysis" / "presets"
 SMAA_CACHE_DIR = CACHE_DIR / "cache_smaa"
 
-# 建立目錄
-for directory in (
-    DATA_DIR, LOG_DIR, CACHE_DIR, RESULT_DIR,
-    PLOT_DIR, GRIDS_DIR, PRESETS_DIR, SMAA_CACHE_DIR
-):
-    directory.mkdir(parents=True, exist_ok=True)
+# 移除自動建立目錄的迴圈，改為按需建立
+# 預設只讓 data、cache 自動建立，其它一律按需
+_DEFAULT_AUTO_CREATE = {"data", "cache"}
 
-# 快取設定
+def _want(name: str) -> bool:
+    """環境變數精細控制：SSS_CREATE_<NAME>=1/0；未設定時只開 data, cache。"""
+    v = os.getenv(f"SSS_CREATE_{name.upper()}", "").lower()
+    if v in ("1", "true", "yes"): return True
+    if v in ("0", "false", "no"): return False
+    return name in _DEFAULT_AUTO_CREATE
+
+def ensure_dir(p: Path, *, force: bool | None = None) -> Path:
+    """必要時才建立資料夾；force=True/False 可覆寫環境變數/預設。"""
+    name_map = {
+        DATA_DIR: "data", CACHE_DIR: "cache", RESULT_DIR: "results",
+        PLOT_DIR: "plots", LOG_DIR: "log"
+    }
+    name = name_map.get(p, None)
+    do_create = _want(name) if force is None else force
+    if do_create:
+        p.mkdir(parents=True, exist_ok=True)
+    return p
+
+def ensure_parent(file_path: Path) -> None:
+    """寫檔前用這個確保父目錄存在（更精準、不會亂建沒用到的夾）。"""
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+# 快取設定 - 只在需要時建立目錄
 MEMORY = Memory(CACHE_DIR / "joblib", verbose=0, mmap_mode=None)
 
 # 交易成本與資本設定

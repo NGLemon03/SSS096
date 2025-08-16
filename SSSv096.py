@@ -21,10 +21,9 @@ from typing import Dict, List, Tuple, Optional
 import warnings
 import logging
 
-# 配置 logger
-from analysis.logging_config import LOGGING_DICT
-import logging.config
-logging.config.dictConfig(LOGGING_DICT)
+# 配置 logger - 使用新的顯式初始化
+from analysis.logging_config import init_logging
+init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREATE_LOGS=1
 logger = logging.getLogger("SSS.Core")
 
 # 忽略 pandas 的 PerformanceWarning

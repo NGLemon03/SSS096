@@ -4,9 +4,8 @@ import os
 import logging
 
 # 設置 logger
-from analysis.logging_config import LOGGING_DICT
-import logging.config
-logging.config.dictConfig(LOGGING_DICT)
+from analysis.logging_config import init_logging
+init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREATE_LOGS=1
 logger = logging.getLogger("SSS.ExtractParams")
 
 def extract_params_from_csv(csv_file, trial_numbers):
