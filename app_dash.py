@@ -71,12 +71,56 @@ from SSSv096 import (
     compute_ssma_turn_combined, backtest_unified, plot_stock_price, plot_equity_cash, plot_weight_series, calculate_holding_periods
 )
 
+# 彈性匯入 pack_df/pack_series 函數
+try:
+    from sss_core.schemas import pack_df, pack_series
+except Exception:
+    from schemas import pack_df, pack_series
+
+# 匯入權重欄位確保函式
+try:
+    from sss_core.normalize import _ensure_weight_columns
+except Exception:
+    # 如果無法匯入，定義一個空的函式作為 fallback
+    def _ensure_weight_columns(df):
+        return df
+
 # 假設你有 get_version_history_html
 try:
     from version_history import get_version_history_html
 except ImportError:
     def get_version_history_html() -> str:
         return "<b>無法載入版本歷史記錄</b>"
+
+# --- 保證放進 Store 的都是 JSON-safe ---
+def _pack_any(x):
+    import pandas as pd
+    if isinstance(x, pd.DataFrame):
+        return pack_df(x)          # orient="split" + date_format="iso"
+    if isinstance(x, pd.Series):
+        return pack_series(x)      # orient="split" + date_format="iso"
+    return x
+
+def _pack_result_for_store(result: dict) -> dict:
+    # 統一把所有 pandas 物件轉成字串（JSON）
+    keys = [
+        'trade_df', 'trades_df', 'signals_df',
+        'equity_curve', 'cash_curve', 'price_series',
+        'daily_state', 'trade_ledger',
+        'daily_state_std', 'trade_ledger_std',
+        'weight_curve'
+    ]
+    out = dict(result)
+    for k in keys:
+        if k in out:
+            out[k] = _pack_any(out[k])
+    # 另外把 datetime tuple 的 trades 轉可序列化（你原本也有做）
+    if 'trades' in out and isinstance(out['trades'], list):
+        out['trades'] = [
+            (str(t[0]), t[1], str(t[2])) if isinstance(t, tuple) and len(t) == 3 else t
+            for t in out['trades']
+        ]
+    return out
 
 default_tickers = ["00631L.TW", "2330.TW", "AAPL", "VOO"]
 strategy_names = list(param_presets.keys())
@@ -113,6 +157,100 @@ def get_column_display_name(column_name):
         'comment': '備註'
     }
     return column_mapping.get(column_name, column_name)
+
+# 顯示層欄名對應（→ 中文）
+DISPLAY_NAME = {
+    'trade_date': '交易日期',
+    'signal_date': '訊號日期',
+    'type': '交易類型',
+    'price': '價格',
+    'weight_change': '權重變化',
+    'w_before': '交易前權重',
+    'w_after': '交易後權重',
+    'delta_units': '股數變化',
+    'exec_notional': '執行金額',
+    'equity_after': '交易後權益',
+    'cash_after': '交易後現金',
+    'equity_pct': '權益%',
+    'cash_pct': '現金%',
+    'invested_pct': '投資比例',
+    'position_value': '部位市值',
+    'return': '報酬',
+    'comment': '備註',
+}
+
+# 顯示層「隱藏」欄位（計算保留、UI 不顯示）
+HIDE_COLS = {
+    'shares_before', 'shares_after', 'fee_buy', 'fee_sell', 'sell_tax', 'tax',
+    'date', 'open', 'equity_open_after_trade'  # ← 你提到的雜欄，統一隱藏
+}
+
+# 顯示層欄位順序（存在才排，不存在就跳過）
+PREFER_ORDER = [
+    'trade_date','signal_date','type','price',
+    'weight_change','w_before','w_after',
+    'delta_units','exec_notional',
+    'equity_after','cash_after','equity_pct','cash_pct',
+    'invested_pct','position_value','return','comment'
+]
+
+def format_trade_like_df_for_display(df):
+    """顯示層：隱藏雜欄 → 補百分比 → 格式化 → 中文欄名 → 安全排序"""
+    import pandas as pd
+    if df is None or len(df)==0:
+        return df
+
+    d = df.copy()
+
+    # 1) 隱藏雜欄
+    hide = [c for c in HIDE_COLS if c in d.columns]
+    if hide:
+        d = d.drop(columns=hide, errors='ignore')
+
+    # 2) 必要欄位補齊百分比（若已存在就略過）
+    if {'equity_after','cash_after'}.issubset(d.columns):
+        tot = d['equity_after'] + d['cash_after']
+        if 'equity_pct' not in d.columns:
+            d['equity_pct'] = d.apply(
+                lambda r: "" if pd.isna(r['equity_after']) or pd.isna(tot.loc[r.name]) or tot.loc[r.name] <= 0
+                          else f"{(r['equity_after']/tot.loc[r.name]):.2%}", axis=1)
+        if 'cash_pct' not in d.columns:
+            d['cash_pct'] = d.apply(
+                lambda r: "" if pd.isna(r['cash_after']) or pd.isna(tot.loc[r.name]) or tot.loc[r.name] <= 0
+                          else f"{(r['cash_after']/tot.loc[r.name]):.2%}", axis=1)
+
+    # 3) 格式化
+    def _fmt_date_col(s):
+        dt = pd.to_datetime(s, errors='coerce')
+        return dt.dt.strftime('%Y-%m-%d').fillna("")
+
+    for col in ['trade_date','signal_date']:
+        if col in d.columns:
+            d[col] = _fmt_date_col(d[col])
+
+    if 'price' in d.columns:
+        d['price'] = d['price'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
+    if 'weight_change' in d.columns:
+        d['weight_change'] = d['weight_change'].apply(lambda x: f"{x:.2%}" if pd.notnull(x) else "")
+    for col in ['w_before','w_after']:
+        if col in d.columns:
+            d[col] = d[col].apply(lambda x: f"{x:,.4f}" if pd.notnull(x) else "")
+    for col in ['exec_notional','equity_after','cash_after','position_value']:
+        if col in d.columns:
+            d[col] = d[col].apply(lambda x: f"{int(round(x)):,}" if pd.notnull(x) else "")
+    if 'delta_units' in d.columns:
+        d['delta_units'] = d['delta_units'].apply(lambda x: f"{int(round(x)):,}" if pd.notnull(x) else "")
+    if 'return' in d.columns:
+        d['return'] = d['return'].apply(lambda x: "-" if pd.isna(x) else f"{x:.2%}")
+
+    # 4) 安全排序（只排存在的欄位）
+    exist = [c for c in PREFER_ORDER if c in d.columns]
+    others = [c for c in d.columns if c not in exist]
+    d = d[exist + others]
+
+    # 5) 中文欄名
+    d = d.rename(columns={k: DISPLAY_NAME.get(k, k) for k in d.columns})
+    return d
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY], suppress_callback_exceptions=True)
 
@@ -315,28 +453,23 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                 continue
             result = backtest_unified(df_ind, strat_type, backtest_params, buy_dates, sell_dates, discount=discount, trade_cooldown_bars=cooldown, bad_holding=bad_holding)
         elif strat_type == 'ensemble':
-            # 用 price 當殼，直接調用 SSS_EnsembleTab 避免 streamlit 衝突
-            df_ind = df_raw[['open','close']].copy()
-
-            # 把 SSSv096 的巢狀參數攤平：
-            flat_params = {}
-            flat_params.update(strat_params.get('params', {}))       # floor / ema_span / delta_cap / ...
-            flat_params.update(strat_params.get('trade_cost', {}))   # buy_fee_bp / sell_fee_bp / sell_tax_bp
-            flat_params['method'] = strat_params.get('method', 'majority')
-            flat_params['ticker'] = ticker  # 用 UI 選的 ticker
-            
-            # === 修復 1：使用比例門檻避免 N 變動時失真 ===
-            if 'majority_k' in flat_params and flat_params.get('method') == 'majority':
-                # 將固定 K 轉換為比例門檻
-                flat_params['majority_k_pct'] = 0.55  # 預設 55% 門檻
-                flat_params.pop('majority_k', None)  # 移除固定 K 值
-                logger.info(f"[Ensemble] 使用比例門檻 majority_k_pct={flat_params['majority_k_pct']}")
-            
-            # === 修復 2：直接調用 SSS_EnsembleTab，避免 streamlit 衝突 ===
+            # 使用新的 ensemble_runner 避免循環依賴
             try:
-                import SSS_EnsembleTab as ens
-                logger.info(f"[Ensemble] using {ens.__file__}")
-                from SSS_EnsembleTab import run_ensemble, EnsembleParams, CostParams, RunConfig
+                from runners.ensemble_runner import run_ensemble_backtest
+                from SSS_EnsembleTab import EnsembleParams, CostParams, RunConfig
+                
+                # 把 SSSv096 的巢狀參數攤平
+                flat_params = {}
+                flat_params.update(strat_params.get('params', {}))
+                flat_params.update(strat_params.get('trade_cost', {}))
+                flat_params['method'] = strat_params.get('method', 'majority')
+                flat_params['ticker'] = ticker
+                
+                # 使用比例門檻避免 N 變動時失真
+                if 'majority_k' in flat_params and flat_params.get('method') == 'majority':
+                    flat_params['majority_k_pct'] = 0.55
+                    flat_params.pop('majority_k', None)
+                    logger.info(f"[Ensemble] 使用比例門檻 majority_k_pct={flat_params['majority_k_pct']}")
                 
                 # 創建配置
                 ensemble_params = EnsembleParams(
@@ -344,14 +477,14 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                     ema_span=flat_params.get("ema_span", 3),
                     delta_cap=flat_params.get("delta_cap", 0.3),
                     majority_k=flat_params.get("majority_k", 6),
-                    min_cooldown_days=flat_params.get("min_cooldown_days", 1),  # 與param_presets一致
-                    min_trade_dw=flat_params.get("min_trade_dw", 0.01)          # 與param_presets一致
+                    min_cooldown_days=flat_params.get("min_cooldown_days", 1),
+                    min_trade_dw=flat_params.get("min_trade_dw", 0.01)
                 )
                 
                 cost_params = CostParams(
-                    buy_fee_bp=flat_params.get("buy_fee_bp", 4.27),  # 與param_presets一致
-                    sell_fee_bp=flat_params.get("sell_fee_bp", 4.27), # 與param_presets一致
-                    sell_tax_bp=flat_params.get("sell_tax_bp", 30.0)  # 與param_presets一致
+                    buy_fee_bp=flat_params.get("buy_fee_bp", 4.27),
+                    sell_fee_bp=flat_params.get("sell_fee_bp", 4.27),
+                    sell_tax_bp=flat_params.get("sell_tax_bp", 30.0)
                 )
                 
                 cfg = RunConfig(
@@ -361,131 +494,36 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                     cost=cost_params
                 )
                 
-                # === 第3步：統一路徑與preset，確保app與SSS使用相同的trades來源 ===
                 # 傳遞比例門檻參數
                 if flat_params.get("majority_k_pct"):
                     cfg.majority_k_pct = flat_params.get("majority_k_pct")
                 else:
-                    # 如果沒有majority_k_pct，強制使用0.55
                     cfg.majority_k_pct = 0.55
                     logger.info(f"[Ensemble] 強制設定 majority_k_pct=0.55")
                 
                 logger.info(f"[Ensemble] 執行配置: ticker={ticker}, method={flat_params.get('method')}, majority_k_pct={flat_params.get('majority_k_pct', 'N/A')}")
                 
-                # === 新增：詳細參數記錄 ===
-                logger.info(f"[Ensemble] 詳細參數: floor={flat_params.get('floor', 'N/A')}, ema_span={flat_params.get('ema_span', 'N/A')}, delta_cap={flat_params.get('delta_cap', 'N/A')}")
-                logger.info(f"[Ensemble] 交易參數: min_cooldown_days={flat_params.get('min_cooldown_days', 'N/A')}, min_trade_dw={flat_params.get('min_trade_dw', 'N/A')}")
-                logger.info(f"[Ensemble] 成本參數: buy_fee_bp={flat_params.get('buy_fee_bp', 'N/A')}, sell_fee_bp={flat_params.get('sell_fee_bp', 'N/A')}, sell_tax_bp={flat_params.get('sell_tax_bp', 'N/A')}")
+                # 使用新的 ensemble_runner 執行
+                backtest_result = run_ensemble_backtest(cfg)
                 
-                # 運行 ensemble 策略
-                open_px, w, trades, stats, method_name, equity, daily_state, trade_ledger = run_ensemble(cfg)
-                
-                # === 構建圖表資料 ===
-                # 1) 價格線：用 open_px
-                price_series = open_px
-                
-                # 2) 使用標準化後的交易明細
-                from SSS_EnsembleTab import normalize_trades_for_ui
-                trades_ui = normalize_trades_for_ui(trades)
-                trade_ledger_ui = normalize_trades_for_ui(trade_ledger)
-                
-                # === 新增：使用 utils_payload 進行額外標準化 ===
-                from utils_payload import _normalize_trade_cols, _normalize_daily_state
-                trade_ledger_std = _normalize_trade_cols(trade_ledger_ui)
-                daily_state_std = _normalize_daily_state(daily_state)
-                
-                logger.info(f"[Ensemble] 標準化後 trade_ledger 欄位: {list(trade_ledger_std.columns)}")
-                logger.info(f"[Ensemble] 標準化後 daily_state 欄位: {list(daily_state_std.columns)}")
-                
-                # === 新增：trade_ledger 欄位白名單檢查 ===
-                required_columns = ['trade_date', 'type', 'price', 'weight_change', 'w_before', 'w_after', 'equity_after', 'cash_after']
-                missing_columns = [col for col in required_columns if col not in trade_ledger_ui.columns]
-                if missing_columns:
-                    logger.warning(f"[Ensemble] trade_ledger 缺少必備欄位: {missing_columns}")
-                    logger.warning(f"[Ensemble] trade_ledger 現有欄位: {list(trade_ledger_ui.columns)}")
-                else:
-                    logger.info(f"[Ensemble] trade_ledger 欄位完整: {list(trade_ledger_ui.columns)}")
-                
-                # 記錄 trade_ledger 首尾筆資訊（方便對齊交易日與 T+1 生效邏輯）
-                if not trade_ledger_ui.empty:
-                    logger.info(f"[Ensemble] trade_ledger 首筆: {trade_ledger_ui.iloc[0]['trade_date'] if 'trade_date' in trade_ledger_ui.columns else 'N/A'}")
-                    logger.info(f"[Ensemble] trade_ledger 尾筆: {trade_ledger_ui.iloc[-1]['trade_date'] if 'trade_date' in trade_ledger_ui.columns else 'N/A'}")
-                
-                # === 新增：daily_state 欄位檢查 ===
-                if daily_state is not None and not daily_state.empty:
-                    daily_state_cols = list(daily_state.columns)
-                    logger.info(f"[Ensemble] daily_state 欄位: {daily_state_cols}")
-                    if 'equity' in daily_state_cols and 'cash' in daily_state_cols:
-                        logger.info(f"[Ensemble] daily_state 權益/現金欄位完整")
-                    else:
-                        logger.warning(f"[Ensemble] daily_state 缺少權益/現金欄位: equity={'equity' in daily_state_cols}, cash={'cash' in daily_state_cols}")
-                else:
-                    logger.warning("[Ensemble] daily_state 為空或 None")
-                
-                # 建立 signals_df 用於其他顯示
-                if not trades_ui.empty:
-                    signals_df = trades_ui.copy()
-                    signals_df = signals_df.rename(columns={'type': 'action'})
-                    signals_df = signals_df[['trade_date', 'action', 'price']]
-                else:
-                    signals_df = pd.DataFrame(columns=['trade_date', 'action', 'price'])
-                
-                # 3) 權益/現金曲線：來自 daily_state['equity'] / ['cash']
-                # === 修正：優先使用標準化後的 daily_state_std ===
-                if daily_state_std is not None and not daily_state_std.empty:
-                    equity_curve = daily_state_std['equity']
-                    cash_curve = daily_state_std['cash']
-                    weight_curve = daily_state_std['w'] if 'w' in daily_state_std.columns else daily_state_std.get('weight', w)
-                elif daily_state is not None and not daily_state.empty:
-                    equity_curve = daily_state['equity']
-                    cash_curve = daily_state['cash']
-                    weight_curve = daily_state['w']
-                else:
-                    equity_curve = equity
-                    cash_curve = pd.Series(1.0, index=equity.index)
-                    weight_curve = w
-                
-                # === 構造結果 ===
-                # 構造指標，使用 trade_ledger_ui 的實際交易次數
-                metrics = {
-                    'total_return': stats.get('total_return', 0.0),
-                    'annual_return': stats.get('annual_return', 0.0),
-                    'max_drawdown': stats.get('max_drawdown', 0.0),
-                    'sharpe_ratio': stats.get('sharpe_ratio', 0.0),
-                    'calmar_ratio': stats.get('calmar_ratio', 0.0),
-                    # 主要交易次數（與單策略格式一致）
-                    'num_trades': int(len(trade_ledger_ui) if trade_ledger_ui is not None and not trade_ledger_ui.empty else 0),
-                    # 全部調倉次數
-                    'num_trades_all': int(len(trade_ledger_ui) if trade_ledger_ui is not None and not trade_ledger_ui.empty else 0),
-                    # 有效交易(可選)：例如金額 >= 初始資金的 0.5%
-                    'num_trades_effective': int((trade_ledger_ui['exec_notional'].abs() >= 0.005 * 1.0).sum() if trade_ledger_ui is not None and not trade_ledger_ui.empty else 0)
-                }
-                
-                # === 使用新的序列化工具 ===
-                from SSS_EnsembleTab import pack_df, pack_series
-                
+                # 轉換為舊格式以保持相容性
                 result = {
                     'trades': [],
-                    'trade_df': pack_df(trades_ui),
-                    'trades_df': pack_df(trades_ui),
-                    'signals_df': pack_df(signals_df),
-                    'metrics': metrics,
-                    'equity_curve': pack_series(equity_curve),
-                    'cash_curve': pack_series(cash_curve),
-                    'weight_curve': pack_series(weight_curve),
-                    'price_series': pack_series(price_series),
-                    'daily_state': pack_df(daily_state),
-                    'trade_ledger': pack_df(trade_ledger_ui),
-                    # === 新增：保存標準化後的資料，確保 UI 端欄位完整 ===
-                    'daily_state_std': pack_df(daily_state_std),
-                    'trade_ledger_std': pack_df(trade_ledger_std)
+                    'trade_df': pack_df(backtest_result.trades),
+                    'trades_df': pack_df(backtest_result.trades),
+                    'signals_df': pack_df(backtest_result.trades[['trade_date', 'type', 'price']].rename(columns={'type': 'action'}) if not backtest_result.trades.empty else pd.DataFrame(columns=['trade_date', 'action', 'price'])),
+                    'metrics': backtest_result.stats,
+                    'equity_curve': pack_series(backtest_result.equity_curve),
+                    'cash_curve': pack_series(backtest_result.cash_curve) if backtest_result.cash_curve is not None else "",
+                    'weight_curve': pack_series(backtest_result.weight_curve) if backtest_result.weight_curve is not None else pack_series(pd.Series(0.0, index=backtest_result.equity_curve.index)),
+                    'price_series': pack_series(backtest_result.price_series) if backtest_result.price_series is not None else pack_series(pd.Series(1.0, index=backtest_result.equity_curve.index)),
+                    'daily_state': pack_df(backtest_result.daily_state),
+                    'trade_ledger': pack_df(backtest_result.ledger),
+                    'daily_state_std': pack_df(backtest_result.daily_state),
+                    'trade_ledger_std': pack_df(backtest_result.ledger)
                 }
                 
-                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity)}, 交易數={len(trade_ledger) if trade_ledger is not None and not trade_ledger.empty else 0}")
-                
-                # === 新增：記錄輸出路徑 ===
-                logger.info(f"[Ensemble] 結果將保存到: sss_backtest_outputs/ensemble_{method_name}_{ticker}.csv")
-                logger.info(f"[Ensemble] 交易來源: {len(trades_files) if 'trades_files' in locals() else 'N/A'} 個策略文件")
+                logger.info(f"[Ensemble] 執行成功: 權益曲線長度={len(backtest_result.equity_curve)}, 交易數={len(backtest_result.ledger) if backtest_result.ledger is not None and not backtest_result.ledger.empty else 0}")
                 
             except Exception as e:
                 logger.error(f"Ensemble 策略執行失敗: {e}")
@@ -496,7 +534,7 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                     'trades_df': pd.DataFrame(),
                     'signals_df': pd.DataFrame(),
                     'metrics': {'total_return': 0.0, 'annual_return': 0.0, 'max_drawdown': 0.0, 'sharpe_ratio': 0.0, 'calmar_ratio': 0.0, 'num_trades': 0},
-                    'equity_curve': pd.Series(1.0, index=df_ind.index)
+                    'equity_curve': pd.Series(1.0, index=df_raw.index)
                 }
             
             # === 修復 3：添加調試日誌，核對子策略集合是否一致 ===
@@ -531,6 +569,10 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                 (str(t[0]), t[1], str(t[2])) if isinstance(t, tuple) and len(t) == 3 else t
                 for t in result['trades']
             ]
+        
+        # << 新增：一律做最後保險打包，補上 daily_state / weight_curve 等 >>
+        result = _pack_result_for_store(result)
+        
         results[strat] = result
     
     # 使用第一個策略的數據作為主要顯示數據
@@ -545,7 +587,13 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
         'ticker': ticker
     }
     
-    # 不再使用 json.dumps，直接回傳 dict，讓 Dash 的 Store 處理
+    # 防守性檢查：如還有漏網的非序列化物件就能提早看出
+    try:
+        json.dumps(payload)
+    except Exception as e:
+        logger.exception("[BUG] backtest-store payload 仍含不可序列化物件：%s", e)
+        # 如果要強制不噴，可做 fallback：json.dumps(..., default=str) 但通常不建議吞掉
+    
     return payload
 
 # --------- 主頁籤內容顯示 ---------
@@ -604,11 +652,11 @@ def update_tab(data, tab, selected_strategy, theme):
             
             # 標準化交易資料，確保有統一的 trade_date/type/price 欄位
             try:
-                from SSS_EnsembleTab import normalize_trades_for_ui as norm
+                from sss_core.normalize import normalize_trades_for_ui as norm
                 trade_df = norm(trade_df)
                 logger.info(f"標準化後 trades_ui 欄位: {list(trade_df.columns)}")
             except Exception as e:
-                logger.warning(f"無法使用 SSS_EnsembleTab 標準化，使用後備方案: {e}")
+                logger.warning(f"無法使用 sss_core 標準化，使用後備方案: {e}")
                 # 後備標準化方案
                 if trade_df is not None and len(trade_df) > 0:
                     trade_df = trade_df.copy()
@@ -656,7 +704,7 @@ def update_tab(data, tab, selected_strategy, theme):
             # === 新：若有 trade_ledger，優先顯示更完整的欄位 ===
             ledger_df = df_from_pack(result.get('trade_ledger'))
             try:
-                from SSS_EnsembleTab import normalize_trades_for_ui as norm
+                from sss_core.normalize import normalize_trades_for_ui as norm
                 ledger_ui = norm(ledger_df) if ledger_df is not None and len(ledger_df)>0 else pd.DataFrame()
             except Exception:
                 ledger_ui = ledger_df if ledger_df is not None else pd.DataFrame()
@@ -678,90 +726,25 @@ def update_tab(data, tab, selected_strategy, theme):
             else:
                 base_df = trade_df
             
-            display_df = base_df.copy()
-            if 'price' not in display_df.columns and 'price_open' in display_df.columns:
-                display_df['price'] = display_df['price_open']
-            
-            # 顯示時只顯示日期
-            def _fmt_date_col(s):
-                dtcol = pd.to_datetime(s, errors='coerce')
-                return dtcol.dt.strftime('%Y-%m-%d').fillna("")
+            # 記錄原始欄位（偵錯用）
+            logger.info("[UI] trade_df 原始欄位：%s", list(base_df.columns) if base_df is not None else None)
+            logger.info("[UI] trade_ledger_std 原始欄位：%s", list(trade_ledger_std.columns) if trade_ledger_std is not None else None)
 
-            if 'trade_date' in display_df.columns:
-                display_df['trade_date'] = _fmt_date_col(display_df['trade_date'])
-            if 'signal_date' in display_df.columns:
-                display_df['signal_date'] = _fmt_date_col(display_df['signal_date'])
-
-            # 正確的小數格式：2 位小數 + 千分位
-            if 'price' in display_df.columns:
-                display_df['price'] = display_df['price'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
-            if 'return' in display_df.columns:
-                display_df['return'] = display_df['return'].apply(lambda x: "-" if pd.isna(x) else f"{x:.2%}")
-
-            # 權重變化：百分比
-            if 'weight_change' in display_df.columns:
-                display_df['weight_change'] = display_df['weight_change'].apply(lambda x: f"{x:.2%}" if pd.notnull(x) else "")
-
-            # 權重欄位：小數四位
-            for col in ['w_before', 'w_after']:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(lambda x: f"{x:,.2%}" if pd.notnull(x) else "")
-
-            # 正確計算權益%與現金%（不要再 *100，再用 :.2% ）
-            if 'equity_after' in display_df.columns and 'cash_after' in display_df.columns:
-                def _safe_pct(num, den):
-                    return "" if (pd.isna(num) or pd.isna(den) or den <= 0) else f"{(num/den):.2%}"
-                total_col = display_df['equity_after'] + display_df['cash_after']
-                display_df['equity_pct'] = [
-                    _safe_pct(e, t) for e, t in zip(display_df['equity_after'], total_col)
-                ]
-                display_df['cash_pct'] = [
-                    _safe_pct(c, t) for c, t in zip(display_df['cash_after'], total_col)
-                ]
-
-            # 百分比欄位（投資比例）
-            for col in ['invested_pct']:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}" if pd.notnull(x) else "")
-
-            # 金額/部位：整數千分位
-            for col in ['exec_notional', 'equity_after', 'cash_after', 'position_value']:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(lambda x: f"{int(round(x)):,}" if pd.notnull(x) else "")
-
-            # 股數：整數千分位
-            if 'delta_units' in display_df.columns:
-                display_df['delta_units'] = display_df['delta_units'].apply(lambda x: f"{int(round(x)):,}" if pd.notnull(x) else "")
-
-            # UI 層隱藏，不影響後端：股數/費用/稅
-            cols_to_hide = ['shares_before','shares_after','fee_buy','fee_sell','sell_tax','tax']
-            display_df = display_df.drop(columns=[c for c in cols_to_hide if c in display_df.columns], errors='ignore')
-
-            # 安全重排（只重排存在的欄位，避免 KeyError）
-            prefer_order = [
-                'trade_date', 'signal_date', 'type', 'price',
-                'weight_change', 'w_before', 'w_after',
-                'delta_units', 'exec_notional',
-                'equity_after', 'cash_after', 'equity_pct', 'cash_pct',
-                'invested_pct', 'position_value', 'return', 'comment'
-            ]
-            final_cols = [c for c in prefer_order if c in display_df.columns] + \
-                         [c for c in display_df.columns if c not in prefer_order]
-            display_df = display_df[final_cols]
+            # 為了 100% 保證 weight_change 出現，先確保權重欄位
+            base_df = _ensure_weight_columns(base_df)
+            # 使用新的統一格式化函式
+            display_df = format_trade_like_df_for_display(base_df)
 
             # === 交易流水帳(ledger)表格：先準備顯示版 ===
             ledger_src = trade_ledger_std if (trade_ledger_std is not None and not trade_ledger_std.empty) else \
                          (ledger_ui if (ledger_ui is not None and not ledger_ui.empty) else pd.DataFrame())
 
             if ledger_src is not None and not ledger_src.empty:
-                ledger_display = ledger_src.copy()
-
-                # 隱藏不想顯示的欄位（但資料仍然存在於後端）
-                cols_to_hide = ['shares_before','shares_after','fee_buy','fee_sell','sell_tax','tax']
-                ledger_display = ledger_display.drop(columns=[c for c in cols_to_hide if c in ledger_display.columns], errors='ignore')
-
-                # 欄名翻譯（沿用你現有的 get_column_display_name）
-                ledger_columns = [{"name": get_column_display_name(i), "id": i} for i in ledger_display.columns]
+                # 為了 100% 保證 weight_change 出現，先確保權重欄位
+                ledger_src = _ensure_weight_columns(ledger_src)
+                # 使用新的統一格式化函式
+                ledger_display = format_trade_like_df_for_display(ledger_src)
+                ledger_columns = [{"name": i, "id": i} for i in ledger_display.columns]
                 ledger_data = ledger_display.to_dict('records')
             else:
                 ledger_columns = []
@@ -840,8 +823,9 @@ def update_tab(data, tab, selected_strategy, theme):
                 logger.info(f"[UI] daily_state_display head=\n{daily_state_display[['equity','cash']].head(3) if 'equity' in daily_state_display.columns and 'cash' in daily_state.columns else 'Missing equity/cash columns'}")
             logger.info(f"[UI] trade_df cols={list(trade_df.columns)} head=\n{trade_df.head(3)}")
             
-            # === 修正：強制使用 daily_state，避免 fallback 造成不一致 ===
+            # === 修正：實現 fallback 邏輯，讓單一策略也能顯示權益/現金 ===
             if daily_state_display is not None and not daily_state_display.empty and {'equity','cash'}.issubset(daily_state_display.columns):
+                # 正常：有 daily_state
                 fig2 = plot_equity_cash(daily_state_display, df_raw)
                 
                 # === 新增：持有權重變化圖（統一背景色） ===
@@ -902,10 +886,24 @@ def update_tab(data, tab, selected_strategy, theme):
                 else:
                     daily_state_table = html.Div("資金權重資料為空", style={"color": "#888", "fontStyle": "italic"})
             else:
-                logger.warning("[UI] 缺少 daily_state(equity/cash)，停止重建以避免與 Streamlit 不一致")
-                fig2 = go.Figure()  # 顯示空圖
-                fig_w = go.Figure()  # 權重圖也為空
-                daily_state_table = html.Div("無資金權重資料", style={"color": "#888", "fontStyle": "italic"})
+                # 回退：沒有 daily_state，就用交易表重建（單一策略會回來）
+                logger.info("[UI] 使用 fallback：從交易表重建權益/現金曲線")
+                fig2 = plot_equity_cash(trade_df, df_raw)  # 使用 SSSv096 的 fallback 邏輯
+                
+                # 權重圖：若 DS 有 w 就畫，否則先給空圖
+                if daily_state_display is not None and not daily_state_display.empty and 'w' in daily_state_display.columns:
+                    fig_w = plot_weight_series(daily_state_display['w'], title="持有權重變化")
+                    fig_w.update_layout(
+                        template=plotly_template,
+                        font_color=font_color,
+                        plot_bgcolor=bg_color,
+                        paper_bgcolor=bg_color,
+                        legend=dict(bgcolor=legend_bgcolor, bordercolor=legend_bordercolor, font=dict(color=legend_font_color))
+                    )
+                else:
+                    fig_w = go.Figure()  # 先給空圖
+                
+                daily_state_table = html.Div("使用交易表重建的權益/現金曲線", style={"color": "#888", "fontStyle": "italic"})
             
             fig2.update_layout(
                 template=plotly_template, font_color=font_color, plot_bgcolor=bg_color, paper_bgcolor=bg_color,
@@ -942,6 +940,25 @@ def update_tab(data, tab, selected_strategy, theme):
                     id={'type': 'strategy-table', 'strategy': strategy}
                 ),
                 
+                # === 新增：交易明細 CSV 下載按鈕 ===
+                html.Div([
+                    html.Button(
+                        "📥 下載交易明細 CSV",
+                        id={'type': 'download-trade-details-csv', 'strategy': strategy},
+                        style={
+                            'backgroundColor': '#28a745',
+                            'color': 'white',
+                            'border': 'none',
+                            'padding': '8px 16px',
+                            'borderRadius': '4px',
+                            'cursor': 'pointer',
+                            'marginTop': '8px',
+                            'fontSize': '14px'
+                        }
+                    ),
+                    dcc.Download(id={'type': 'download-trade-details-data', 'strategy': strategy})
+                ], style={'textAlign': 'center', 'marginTop': '8px'}),
+                
 
             ])
             
@@ -975,7 +992,7 @@ def update_tab(data, tab, selected_strategy, theme):
             
             # 標準化交易資料
             try:
-                from SSS_EnsembleTab import normalize_trades_for_ui as norm
+                from sss_core.normalize import normalize_trades_for_ui as norm
                 trade_df = norm(trade_df)
             except Exception:
                 # 後備標準化方案
@@ -1027,7 +1044,7 @@ def update_tab(data, tab, selected_strategy, theme):
             
             # 標準化交易資料
             try:
-                from SSS_EnsembleTab import _normalize_trades_for_ui as norm
+                from sss_core.normalize import normalize_trades_for_ui as norm
                 trade_df = norm(trade_df)
             except Exception:
                 # 後備標準化方案
@@ -1171,7 +1188,7 @@ def download_trade(n_clicks, table_data, backtest_data):
     
     # 標準化交易資料
     try:
-        from SSS_EnsembleTab import _normalize_trades_for_ui as norm
+        from sss_core.normalize import normalize_trades_for_ui as norm
         trade_df = norm(trade_df)
     except Exception:
         # 後備標準化方案
@@ -1193,7 +1210,61 @@ def download_trade(n_clicks, table_data, backtest_data):
         with pd.ExcelWriter(bytes_io, engine='openpyxl') as writer:
             trade_df.to_excel(writer, sheet_name='交易紀錄', index=False)
     
-    return [dcc.send_bytes(to_xlsx, f"{strategy}_交易紀錄.xlsx") if i > 0 else None for i in n_clicks]
+    return [dcc.send_bytes(to_xlsx, f"{strategy}_交易紀錄.xlsx") if i and i > 0 else None for i in n_clicks]
+
+# --------- 下載交易明細 CSV ---------
+@app.callback(
+    Output({'type': 'download-trade-details-data', 'strategy': ALL}, 'data'),
+    Input({'type': 'download-trade-details-csv', 'strategy': ALL}, 'n_clicks'),
+    State({'type': 'strategy-table', 'strategy': ALL}, 'data'),
+    State('backtest-store', 'data'),
+    prevent_initial_call=True
+)
+def download_trade_details_csv(n_clicks, table_data, backtest_data):
+    """下載交易明細為 CSV 格式"""
+    ctx_trigger = ctx.triggered_id
+    if not ctx_trigger or not backtest_data:
+        return [None] * len(n_clicks)
+    
+    # 從觸發的按鈕ID中提取策略名稱
+    strategy = ctx_trigger['strategy']
+    
+    # 從backtest_data中獲取對應策略的交易數據
+    results = backtest_data['results']
+    result = results.get(strategy)
+    
+    if not result:
+        return [None] * len(n_clicks)
+    
+    # 使用解包器函數，支援 pack_df 和傳統 JSON 字串兩種格式
+    trade_df = df_from_pack(result.get('trade_df'))
+    
+    # 標準化交易資料
+    try:
+        from sss_core.normalize import normalize_trades_for_ui as norm
+        trade_df = norm(trade_df)
+    except Exception:
+        # 後備標準化方案
+        if trade_df is not None and len(trade_df) > 0:
+            trade_df = trade_df.copy()
+            trade_df.columns = [str(c).lower() for c in trade_df.columns]
+            if "trade_date" not in trade_df.columns and "date" in trade_df.columns:
+                trade_df["trade_date"] = pd.to_datetime(trade_df["date"], errors="coerce")
+            if "type" not in trade_df.columns and "action" in trade_df.columns:
+                trade_df["type"] = trade_df["action"].astype(str).str.lower()
+            if "price" not in trade_df.columns:
+                for c in ["open", "price_open", "exec_price", "px", "close"]:
+                    if c in trade_df.columns:
+                        trade_df["price"] = trade_df[c]
+                        break
+    
+    # 創建 CSV 下載數據
+    def to_csv(bytes_io):
+        # 使用 UTF-8 BOM 確保 Excel 能正確顯示中文
+        bytes_io.write('\ufeff'.encode('utf-8'))
+        trade_df.to_csv(bytes_io, index=False, encoding='utf-8-sig')
+    
+    return [dcc.send_bytes(to_csv, f"{strategy}_交易明細.csv") if i and i > 0 else None for i in n_clicks]
 
 def calculate_strategy_detailed_stats(trade_df, df_raw):
     """計算策略的詳細統計信息"""

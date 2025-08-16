@@ -30,6 +30,11 @@ logger = logging.getLogger("SSS.Core")
 # 忽略 pandas 的 PerformanceWarning
 warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
 
+# ---- Ensemble runner (沿用 Dash 已驗證的邏輯) ----
+from SSS_EnsembleTab import RunConfig, EnsembleParams, CostParams, run_ensemble
+from sss_core.normalize import normalize_trades_for_ui, format_trade_df_for_display, normalize_daily_state
+from sss_core.plotting import dump_equity_cash, dump_timeseries
+
 __all__ = [
     "load_data", "compute_single", "compute_dual", "compute_RMA",
     "compute_ssma_turn_combined", "backtest_unified",
@@ -193,6 +198,17 @@ param_presets = {
 }
 setup_logging()  # 初始化統一日誌設定
 logger = logging.getLogger("SSSv096")  # 使用專屬 logger
+
+# --- 新增：Ensemble 策略提示「只提醒一次」機制 ---
+_ENSEMBLE_MOVED_WARNED = False
+def _warn_ensemble_moved_once():
+    global _ENSEMBLE_MOVED_WARNED
+    if _ENSEMBLE_MOVED_WARNED:
+        return
+    logger.warning("Ensemble 策略類型已移至 runners.ensemble_runner，請使用 app_dash.py 或直接調用 ensemble_runner")
+    logger.info("Ensemble 策略已移至 runners.ensemble_runner")
+    _ENSEMBLE_MOVED_WARNED = True
+
 from functools import wraps
 
 @dataclass
@@ -942,124 +958,103 @@ def backtest_unified(
         return {'trades': [], 'trade_df': pd.DataFrame(), 'trades_df': pd.DataFrame(), 'signals_df': pd.DataFrame(), 'metrics': [], 'equity_curve': pd.Series()}
 
     # 處理 ensemble 策略類型
-    if strategy_type == "ensemble":
+    elif strategy_type == "ensemble":
+        import traceback
+        from contextlib import nullcontext
+        
+        status_ctx = st.status("執行 Ensemble 回測中…", state="running") if hasattr(st, "status") else nullcontext()
         try:
-            from SSS_EnsembleTab import run_ensemble, EnsembleParams, CostParams, RunConfig
-            # 創建配置
-            ensemble_params = EnsembleParams(
-                floor=params.get("floor", 0.2),
-                ema_span=params.get("ema_span", 3),
-                delta_cap=params.get("delta_cap", 0.3),
-                majority_k=params.get("majority_k", 6),
-                min_cooldown_days=params.get("min_cooldown_days", 1),  # 與param_presets一致
-                min_trade_dw=params.get("min_trade_dw", 0.01)          # 與param_presets一致
-            )
-            
-            # === 第3步：統一路徑與preset，確保app與SSS使用相同的參數 ===
-            # 強制使用比例門檻，避免N變動時失真
-            if params.get("method") == "majority":
-                if params.get("majority_k_pct"):
-                    logger.info(f"[Ensemble] 使用比例門檻 majority_k_pct={params.get('majority_k_pct')}")
-                else:
-                    # 如果沒有majority_k_pct，強制使用0.55
-                    params["majority_k_pct"] = 0.55
-                    logger.info(f"[Ensemble] 強制設定 majority_k_pct=0.55")
-                # majority_k 會在 SSS_EnsembleTab 中根據實際策略數量動態調整
-            
-            cost_params = CostParams(
-                buy_fee_bp=params.get("buy_fee_bp", 4.27),  # 與param_presets一致
-                sell_fee_bp=params.get("sell_fee_bp", 4.27), # 與param_presets一致
-                sell_tax_bp=params.get("sell_tax_bp", 30.0)  # 與param_presets一致
-            )
-            # 優先使用 params 中的 ticker，然後嘗試從 df_ind 推斷，最後使用默認值
-            ticker_name = params.get("ticker")
-            if not ticker_name:
-                # 嘗試從 df_ind 的 name 屬性獲取
-                ticker_name = getattr(df_ind, 'name', None)
-                if not ticker_name:
-                    # 最後使用默認值
-                    ticker_name = "00631L.TW"
-            
-            cfg = RunConfig(
-                ticker=ticker_name,
-                method=params.get("method", "majority"),
-                params=ensemble_params,
-                cost=cost_params
-            )
-            
-            # === 修復：傳遞比例門檻參數 ===
-            if params.get("majority_k_pct"):
-                cfg.majority_k_pct = params.get("majority_k_pct")
-            
-            logger.info(f"[Ensemble] 執行配置: ticker={ticker_name}, method={params.get('method')}, majority_k_pct={params.get('majority_k_pct', 'N/A')}")
-            
-            # 運行 ensemble 策略
-            try:
+            with status_ctx:
+                # 從 Streamlit session_state 取得 ensemble 參數
+                method = st.session_state.get('ensemble_method', 'majority')
+                floor  = st.session_state.get('ensemble_floor', 0.2)
+                ema    = st.session_state.get('ensemble_ema', 3)
+                delta  = st.session_state.get('ensemble_delta', 0.3)
+
+                # ---- CostParams：UI 以 bp 設定，內部轉成 rate ----
+                buy_fee_bp  = float(st.session_state.get('buy_fee_bp',  4.27))
+                sell_fee_bp = float(st.session_state.get('sell_fee_bp', 4.27))
+                sell_tax_bp = float(st.session_state.get('sell_tax_bp', 30.0))
+                slip_bp     = float(st.session_state.get('slippage_bp', 0.0))
+
+                # 在 ensemble 分支裡面先決定 ticker_name
+                ticker_name = (
+                    params.get('ticker')
+                    or (getattr(df_ind, 'name', None) if hasattr(df_ind, 'name') else None)
+                    or 'UNKNOWN'
+                )
+
+                cost = CostParams(
+                    buy_fee_bp   = buy_fee_bp,
+                    sell_fee_bp  = sell_fee_bp,
+                    sell_tax_bp  = sell_tax_bp,
+                )
+                params = EnsembleParams(
+                    floor=floor,
+                    ema_span=ema,
+                    delta_cap=delta,
+                    majority_k=6,
+                    min_cooldown_days=1,
+                    min_trade_dw=0.01
+                )
+                cfg = RunConfig(
+                    ticker=ticker_name,
+                    method=method,          # method 放在 RunConfig
+                    params=params,
+                    cost=cost,
+                    majority_k_pct=0.55    # 預設比例門檻
+                )
+
                 open_px, w, trades, stats, method_name, equity, daily_state, trade_ledger = run_ensemble(cfg)
-                
-                # 直接使用 run_ensemble 計算的權益曲線，避免重複計算
-                equity_curve = equity
-                
-                # 構造交易記錄
-                trade_records = []
-                if not trades.empty:
-                    for _, row in trades.iterrows():
-                        trade_records.append({
-                            'signal_date': row['trade_date'],
-                            'trade_date': row['trade_date'],
-                            'type': row['type'],
-                            'price': row['price_open'],
-                            'shares': 1.0,  # 簡化處理
-                            'return': 0.0   # 簡化處理
-                        })
-                
-                trade_df = pd.DataFrame(trade_records)
-                trades_df = pd.DataFrame()  # 簡化處理
-                signals_df = pd.DataFrame()  # 簡化處理
-                
-                # 構造指標
-                metrics = {
-                    'total_return': stats.get('total_return', 0.0),
-                    'annual_return': stats.get('annual_return', 0.0),
-                    'max_drawdown': stats.get('max_drawdown', 0.0),
-                    'sharpe_ratio': stats.get('sharpe_ratio', 0.0),
-                    'calmar_ratio': stats.get('calmar_ratio', 0.0),
-                    'num_trades': len(trade_records)
+
+                trade_df_ui = normalize_trades_for_ui(trades)
+                ledger_ui   = normalize_trades_for_ui(trade_ledger)
+
+                result = {
+                    'trades': trades.to_dict('records') if hasattr(trades,'to_dict') else [],
+                    'trade_df': trade_df_ui,
+                    'trade_ledger': ledger_ui,
+                    'signals_df': pd.DataFrame(),
+                    'metrics': stats if isinstance(stats, dict) else {},
+                    'equity_curve': equity,
+                    'daily_state': daily_state,  # 加入 daily_state 供偵錯使用
+                    'weight_curve': w,  # 加入 weight_curve 供偵錯使用
                 }
                 
-                logger.info(f"[Ensemble] 執行成功: {method_name}, 權益曲線長度={len(equity_curve)}, 交易數={len(trade_records)}")
+                # 執行摘要訊息
+                st.info(f"[Ensemble] {method} @ {ticker_name} | 交易筆數={len(trades)} | 回測列數={len(equity)}")
                 
-            except FileNotFoundError as e:
-                # 如果沒有找到 trades_*.csv 文件，創建一個模擬的 ensemble 結果
-                logger.warning(f"Ensemble 策略找不到 trades_*.csv 文件，創建模擬結果: {e}")
+                # 基本訊息
+                st.success(f"Ensemble 完成：{method_name}")
+                st.caption(f"參數：method={method}, floor={floor}, ema={ema}, delta={delta}, "
+                           f"買/賣手續費bp={buy_fee_bp}/{sell_fee_bp}，證交稅bp={sell_tax_bp}，滑價bp={slip_bp}")
+
+                # 沒交易時的診斷
+                if (trades is None) or (len(trades) == 0):
+                    st.warning(
+                        f"Ensemble 沒有產生交易，可能原因：\n"
+                        f"• 子策略持倉全 0 或被健康檢查過濾\n"
+                        f"• 門檻過高（majority_k_pct={cfg.majority_k_pct}）或 delta_cap / min_trade_dw 過嚴\n"
+                        f"• 成本設定使得微小變動被忽略\n"
+                        f"請降低門檻、放寬 delta_cap 或檢查子策略 trades 檔。"
+                    )
+                    # 額外提示：顯示部分 daily_state / w 供使用者自查
+                    if daily_state is not None and not daily_state.empty:
+                        st.info("以下為最近 10 筆權重變化供檢視：")
+                        st.dataframe(daily_state[['w']].tail(10) if 'w' in daily_state.columns else daily_state.tail(10))
                 
-                # 創建模擬的權益曲線
-                equity_curve = pd.Series(1.0, index=df_ind.index)
+                logger.info(f"[Ensemble] 成功執行 {method_name} 策略，產生 {len(trades)} 筆交易")
+                return result
                 
-                # 創建空的交易記錄
-                trade_df = pd.DataFrame()
-                trades_df = pd.DataFrame()
-                signals_df = pd.DataFrame()
-                
-                # 創建模擬指標
-                metrics = {
-                    'total_return': 0.0,
-                    'annual_return': 0.0,
-                    'max_drawdown': 0.0,
-                    'sharpe_ratio': 0.0,
-                    'calmar_ratio': 0.0,
-                    'num_trades': 0
-                }
-            
-            logger.info(f"Ensemble {method_name} 回測結果: 總報酬率 = {metrics.get('total_return', 0):.2%}, 交易次數={metrics.get('num_trades', 0)}")
-            return {'trades': [], 'trade_df': trade_df, 'trades_df': trades_df, 'signals_df': signals_df, 'metrics': metrics, 'equity_curve': equity_curve}
-            
-        except ImportError as e:
-            logger.error(f"無法導入 SSS_EnsembleTab 模塊: {e}")
-            return {'trades': [], 'trade_df': pd.DataFrame(), 'trades_df': pd.DataFrame(), 'signals_df': pd.DataFrame(), 'metrics': {'total_return': 0.0, 'annual_return': 0.0, 'max_drawdown': 0.0, 'sharpe_ratio': 0.0, 'calmar_ratio': 0.0, 'num_trades': 0}, 'equity_curve': pd.Series()}
         except Exception as e:
-            logger.error(f"Ensemble 策略執行失敗: {e}")
-            return {'trades': [], 'trade_df': pd.DataFrame(), 'trades_df': pd.DataFrame(), 'signals_df': pd.DataFrame(), 'metrics': {'total_return': 0.0, 'annual_return': 0.0, 'max_drawdown': 0.0, 'sharpe_ratio': 0.0, 'calmar_ratio': 0.0, 'num_trades': 0}, 'equity_curve': pd.Series()}
+            logger.exception("[Ensemble] 執行失敗: %s", e)
+            st.error(f"[Ensemble] 執行失敗：{e}")
+            st.code(traceback.format_exc(), language="text")
+            st.stop()
+        finally:
+            if hasattr(st, "status"):
+                status_ctx.update(label="完成" if 'trades' in locals() else "結束（可能失敗）",
+                                  state=("complete" if 'trades' in locals() else "error"))
 
     BUY_FEE_RATE = BASE_FEE_RATE * discount
     SELL_FEE_RATE = BASE_FEE_RATE * discount + TAX_RATE
@@ -1289,9 +1284,28 @@ def backtest_unified(
     trades_df = pd.DataFrame(trades, columns=['entry_date', 'ret', 'exit_date'])
     signals_df = pd.DataFrame(signals)
     metrics = calculate_metrics(trades, df_ind, equity_curve)
+    
+    # 為非-ensemble 策略生成 daily_state，包含 equity 和 cash 欄位
+    daily_state = pd.DataFrame({
+        'equity': equity_curve,
+        'cash': cash_series,
+        'shares': shares_series
+    })
+    # 計算權重（投資比例）
+    daily_state['w'] = (daily_state['equity'] - daily_state['cash']) / daily_state['equity']
+    daily_state['w'] = daily_state['w'].fillna(0).clip(0, 1)
 
     logger.info(f"{strategy_type} 回測結果: 總報酬率 = {metrics.get('total_return', 0):.2%}, 交易次數={metrics.get('num_trades', 0)}")
-    return {'trades': trades, 'trade_df': trade_df, 'trades_df': trades_df, 'signals_df': signals_df, 'metrics': metrics, 'equity_curve': equity_curve}
+    return {
+        'trades': trades, 
+        'trade_df': trade_df, 
+        'trades_df': trades_df, 
+        'signals_df': signals_df, 
+        'metrics': metrics, 
+        'equity_curve': equity_curve,
+        'daily_state': daily_state,  # 加入 daily_state
+        'weight_curve': daily_state['w']  # 加入 weight_curve
+    }
 def compute_backtest_for_periods(ticker: str,periods: List[Tuple[str, str]],strategy_type: str,params: Dict,
     smaa_source: str = "Self",trade_cooldown_bars: int = 3,discount: float = 0.30,
     bad_holding: bool = False,df_price: Optional[pd.DataFrame] = None,df_factor: Optional[pd.DataFrame] = None
@@ -1363,60 +1377,52 @@ def compute_backtest_for_periods(ticker: str,periods: List[Tuple[str, str]],stra
 
 
 # --- 新增：把各種交易格式轉成畫圖要的統一規格 ---
-def normalize_trades_for_plots(trades_df: pd.DataFrame, price_series: pd.Series | None = None) -> pd.DataFrame:
-    """把各種交易格式轉成畫圖要的統一規格：trade_date + type + price"""
-    import pandas as pd
-    import numpy as np
+# --- 使用本檔內部定義的標準化函式 ---
+
+def normalize_trades_for_plots(
+    trades: pd.DataFrame,
+    price_series: Optional[pd.Series] = None,   # 新增（可選）
+) -> pd.DataFrame:
+    """
+    標準化交易資料用於繪圖，保留所有欄位。
+    若 trades 缺 price 欄，且提供了 price_series，則依 trade_date 對齊補價。
+    """
+    if trades is None or len(trades) == 0:
+        return pd.DataFrame()
     
-    if trades_df is None or len(trades_df) == 0:
-        return pd.DataFrame(columns=["trade_date", "type", "price"])
-
-    t = trades_df.copy()
-
-    # 動作欄位：支援 type / side / action
-    if "type" not in t.columns:
-        for c in ("side", "action"):
-            if c in t.columns:
-                t["type"] = t[c].astype(str).str.lower()
+    trades_plot = trades.copy()
+    trades_plot.columns = [str(c).lower() for c in trades_plot.columns]
+    
+    # trade_date / type 標準化
+    if "trade_date" not in trades_plot.columns and "date" in trades_plot.columns:
+        trades_plot["trade_date"] = pd.to_datetime(trades_plot["date"], errors="coerce")
+    if "type" not in trades_plot.columns and "action" in trades_plot.columns:
+        trades_plot["type"] = trades_plot["action"].astype(str).str.lower()
+    
+    # price 標準化：先靠常見欄位，其次用 price_series 對齊補價
+    if "price" not in trades_plot.columns:
+        for c in ["open", "price_open", "exec_price", "px", "close"]:
+            if c in trades_plot.columns:
+                trades_plot["price"] = trades_plot[c]
                 break
-        else:
-            # 如果都沒有找到動作欄位，返回空表
-            return pd.DataFrame(columns=["trade_date", "type", "price"])
-
-    # 日期欄位：支援 trade_date / date / index 是時間
-    if "trade_date" not in t.columns:
-        if "date" in t.columns:
-            t["trade_date"] = pd.to_datetime(t["date"], errors="coerce")
-        elif isinstance(t.index, pd.DatetimeIndex):
-            t["trade_date"] = t.index
-        else:
-            # 如果都沒有找到日期欄位，返回空表
-            return pd.DataFrame(columns=["trade_date", "type", "price"])
     
-    t["trade_date"] = pd.to_datetime(t["trade_date"], errors="coerce")
-
-    # 價格欄位：優先用 price；否則用 open；都沒有就從 price_series 對齊
-    if "price" not in t.columns:
-        if "open" in t.columns:
-            t["price"] = pd.to_numeric(t["open"], errors="coerce")
-        elif price_series is not None:
-            # 從 price_series 對齊當日價格
-            s = price_series.rename("open").reset_index()
-            s.columns = ["trade_date", "open"]
-            t = t.merge(s, on="trade_date", how="left")
-            t["price"] = t["open"]
-        else:
-            # 如果都沒有價格資訊，返回空表
-            return pd.DataFrame(columns=["trade_date", "type", "price"])
-
-    # 只保留畫圖必要欄位（統一規格）
-    keep = ["trade_date", "type", "price"]
-    t = t[[c for c in keep if c in t.columns]]
+    if "price" not in trades_plot.columns:
+        trades_plot["price"] = pd.NA  # 先補 NA，若等下有 price_series 再補齊
     
-    # 過濾掉無效資料
-    t = t.dropna(subset=["trade_date", "type", "price"])
+    if price_series is not None:
+        # 確保兩邊 index/型別能對齊
+        ps = price_series.copy()
+        if not isinstance(ps.index, pd.DatetimeIndex):
+            ps.index = pd.to_datetime(ps.index, errors="coerce")
+        # 以 trade_date 對齊補價（僅在 price 為空或無效時）
+        if "trade_date" in trades_plot.columns:
+            td = pd.to_datetime(trades_plot["trade_date"], errors="coerce")
+            aligned = ps.reindex(td).reset_index(drop=True)
+            # 只填那些目前是 NA 的
+            need_fill = trades_plot["price"].isna() | ~pd.to_numeric(trades_plot["price"], errors="coerce").notna()
+            trades_plot.loc[need_fill, "price"] = aligned[need_fill].values
     
-    return t
+    return trades_plot
 
 # --- 可視化函數 ---
 def plot_stock_price(df: pd.DataFrame, trades_df: pd.DataFrame, ticker: str) -> go.Figure:
@@ -1526,6 +1532,18 @@ def plot_equity_cash(trades_or_ds: pd.DataFrame, df_raw: pd.DataFrame | None = N
             ds.index = pd.to_datetime(ds.index)
         ds = ds.sort_index()
         
+        # 以 daily_state 直接畫圖前，做一次健檢/保險
+        if 'position_value' in ds.columns:
+            try:
+                corr = pd.Series(ds['equity']).corr(pd.Series(ds['cash']))
+                looks_like_position_value = (corr is not None and corr < -0.95)
+                if looks_like_position_value:
+                    eq_fixed = ds['position_value'] + ds['cash']
+                    ds = ds.copy()
+                    ds['equity'] = eq_fixed  # 自動糾偏
+            except Exception:
+                pass
+        
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ds.index, y=ds['equity'], name='Equity', line=dict(color='dodgerblue')))
         fig.add_trace(go.Scatter(x=ds.index, y=ds['cash'],   name='Cash',   line=dict(color='gray')))
@@ -1534,8 +1552,7 @@ def plot_equity_cash(trades_or_ds: pd.DataFrame, df_raw: pd.DataFrame | None = N
     else:
         # 舊路徑：交易表 → 標準化後重建（Ensemble 的交易表通常缺 shares，不保證成功）
         try:
-            from SSS_EnsembleTab import normalize_trades_for_plots
-            trades_df = normalize_trades_for_plots(trades_or_ds, price_series=df_raw.get('open') if df_raw is not None else None)
+            trades_df = normalize_trades_for_plots(trades_or_ds)
             ds = reconstruct_equity_cash_from_trades(trades_df, df_raw)  # 你既有的重建邏輯
             
             # 保底欄位
@@ -2273,22 +2290,65 @@ force_update=force_update
                 st.plotly_chart(plot_stock_price(df_raw, result['trade_df'], ticker), 
                                 use_container_width=True, key=f"stock_price_{strategy}")
 
-                st.plotly_chart(plot_equity_cash(result['trade_df'], df_raw), 
+                # ✅ 優先使用 daily_state（Ensemble 正確路徑），沒有再退回 trade_df
+                ds_or_trades = result.get('daily_state', result.get('trade_df'))
+                # 標準化 daily_state 再繪圖，避免欄位名誤用
+                if ds_or_trades is not None and not ds_or_trades.empty:
+                    ds_or_trades = normalize_daily_state(ds_or_trades)
+                
+                # 🔍 偵錯輸出：把真正要畫的資料直接吐出 csv
+                try:
+                    print(f"🔍 開始偵錯輸出：{strategy}")
+                    print(f"   ds_or_trades type: {type(ds_or_trades)}")
+                    if hasattr(ds_or_trades, 'shape'):
+                        print(f"   ds_or_trades shape: {ds_or_trades.shape}")
+                    if hasattr(ds_or_trades, 'columns'):
+                        print(f"   ds_or_trades columns: {list(ds_or_trades.columns)}")
+                    
+                    # 檢查是否有 equity/cash 欄位，如果有就用 dump_equity_cash，否則用 dump_timeseries
+                    if isinstance(ds_or_trades, pd.DataFrame) and {"equity", "cash"}.issubset(ds_or_trades.columns):
+                        print(f"   ✅ 發現 equity/cash 欄位，使用 dump_equity_cash")
+                        dump_equity_cash(f"dash_{strategy}", ds_or_trades)
+                    else:
+                        print(f"   ⚠️ 沒有 equity/cash 欄位，使用 dump_timeseries 輸出交易數據")
+                        # 輸出交易數據作為備用
+                        if 'trade_df' in result and result['trade_df'] is not None:
+                            dump_timeseries(f"dash_{strategy}_trades", trades=result['trade_df'])
+                        # 輸出 daily_state 數據（如果有）
+                        if 'daily_state' in result and result['daily_state'] is not None:
+                            dump_timeseries(f"dash_{strategy}_daily_state", daily_state=result['daily_state'])
+                    
+                    # 同時把權重與價格也吐出，避免 index 對不齊
+                    if 'weight_curve' in result:
+                        print(f"   weight_curve type: {type(result['weight_curve'])}")
+                        if hasattr(result['weight_curve'], 'shape'):
+                            print(f"   weight_curve shape: {result['weight_curve'].shape}")
+                        dump_timeseries(f"dash_{strategy}_weights", weight=result['weight_curve'], price=df_raw['close'])
+                    else:
+                        print(f"   ⚠️ 沒有 weight_curve 在 result 中")
+                        print(f"   result keys: {list(result.keys())}")
+                except Exception as e:
+                    print(f"❌ 偵錯輸出失敗：{e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                st.plotly_chart(plot_equity_cash(ds_or_trades, df_raw), 
                                 use_container_width=True, key=f"equity_cash_{strategy}")
                 st.plotly_chart(plot_indicators(df_ind, strategy_type, result['trade_df'], params), 
                                 use_container_width=True, key=f"indicators_{strategy}")                
                 st.subheader("交易明細")
-                trade_df = result['trade_df'].copy()
-                # 只顯示日期
-                for col in ['signal_date', 'trade_date']:
-                    if col in trade_df.columns:
-                        trade_df[col] = pd.to_datetime(trade_df[col]).dt.date
-                # price, return 只顯示兩位小數
-                if 'price' in trade_df.columns:
-                    trade_df['price'] = trade_df['price'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-                if 'return' in trade_df.columns:
-                    trade_df['return'] = trade_df['return'].apply(lambda x: "-" if pd.isna(x) else f"{x:.2%}")
-                st.dataframe(trade_df)
+                # 優先使用 trade_ledger（Ensemble 的完整交易記錄），其次用 trade_df
+                display_df = None
+                if strategy_type == 'ensemble' and 'trade_ledger' in result and not result['trade_ledger'].empty:
+                    display_df = result['trade_ledger']
+                else:
+                    display_df = result['trade_df']
+                
+                # 標準化後再格式化顯示
+                display_df_std = normalize_trades_for_ui(display_df)
+                display_df_formatted = format_trade_df_for_display(display_df_std)
+                
+                st.dataframe(display_df_formatted)
                 st.markdown("**所有下單日皆為信號日的隔天（T+1），本表 signal_date=trade_date 代表信號日即下單日**")
             else:
                 st.warning(f"{strategy} 策略未產生任何交易,可能是參數設置或數據問題.")

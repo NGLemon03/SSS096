@@ -52,172 +52,19 @@ logger = logging.getLogger("SSS.Ensemble")
 # 統一交易明細契約標準化函式
 # ---------------------------------------------------------------------
 
-def normalize_trades_for_plots(df: pd.DataFrame, price_series: pd.Series | None = None) -> pd.DataFrame:
-    """標準化交易明細為統一契約，確保至少有 trade_date/type/price 三欄
-    
-    Args:
-        df: 原始交易明細 DataFrame
-        price_series: 價格序列，用於補充缺失的價格欄位
-        
-    Returns:
-        標準化後的 DataFrame，包含 trade_date, type, price 三欄
-    """
-    if df is None or len(df) == 0:
-        return pd.DataFrame(columns=["trade_date", "type", "price"])
-    
-    out = df.copy()
-    out.columns = [str(c).lower() for c in out.columns]
-    
-    # 日期欄
-    if "trade_date" not in out.columns:
-        if "date" in out.columns:
-            out["trade_date"] = pd.to_datetime(out["date"], errors="coerce")
-        elif isinstance(out.index, pd.DatetimeIndex):
-            out = out.reset_index().rename(columns={"index": "trade_date"})
-        else:
-            out["trade_date"] = pd.NaT
-    else:
-        out["trade_date"] = pd.to_datetime(out["trade_date"], errors="coerce")
-    
-    # 動作欄
-    if "type" not in out.columns:
-        if "side" in out.columns:
-            out["type"] = out["side"].astype(str).str.lower()
-        elif "action" in out.columns:
-            out["type"] = out["action"].astype(str).str.lower()
-        elif "dw" in out.columns:
-            # 退而求其次：用權重變化推斷
-            out["type"] = np.where(out["dw"] > 0, "buy",
-                            np.where(out["dw"] < 0, "sell", "hold"))
-        else:
-            out["type"] = "hold"
-    
-    # 價格欄
-    if "price" not in out.columns:
-        for c in ("open", "exec_price", "px", "entry_price", "price_after"):
-            if c in out.columns:
-                out["price"] = out[c]
-                break
-        if "price" not in out.columns:
-            # 如果還是沒有價格，嘗試從 price_series 補充
-            if price_series is not None and "trade_date" in out.columns:
-                out["price"] = out["trade_date"].map(price_series)
-            else:
-                out["price"] = np.nan
-    
-    return out[["trade_date", "type", "price"]].dropna()
+# 使用 sss_core 統一版本的 normalize_trades_for_plots
+from sss_core.normalize import normalize_trades_for_plots
 
 
-def normalize_trades_for_ui(df: pd.DataFrame) -> pd.DataFrame:
-    """標準化交易明細為統一契約，確保至少有 trade_date/type/price 三欄
-    
-    Args:
-        df: 原始交易明細 DataFrame
-        
-    Returns:
-        標準化後的 DataFrame，包含 trade_date, type, price 三欄
-    """
-    if df is None or len(df) == 0:
-        return pd.DataFrame(columns=["trade_date", "type", "price"])
-    
-    out = df.copy()
-    out.columns = [str(c).lower() for c in out.columns]
-    
-    # 日期欄
-    if "trade_date" not in out.columns:
-        if "date" in out.columns:
-            out["trade_date"] = pd.to_datetime(out["date"], errors="coerce")
-        elif isinstance(out.index, pd.DatetimeIndex):
-            out = out.reset_index().rename(columns={"index": "trade_date"})
-        else:
-            out["trade_date"] = pd.NaT
-    else:
-        out["trade_date"] = pd.to_datetime(out["trade_date"], errors="coerce")
-    
-    # 動作欄
-    if "type" not in out.columns:
-        if "side" in out.columns:
-            out["type"] = out["side"].astype(str).str.lower()
-        elif "action" in out.columns:
-            out["type"] = out["action"].astype(str).str.lower()
-        elif "dw" in out.columns:
-            # 退而求其次：用權重變化推斷
-            out["type"] = np.where(out["dw"] > 0, "buy",
-                            np.where(out["dw"] < 0, "sell", "hold"))
-        else:
-            out["type"] = "hold"
-    
-    # 價格欄（含更多容錯）
-    if "price" not in out.columns:
-        for c in ("open","price_open","exec_price","px","entry_price","price_after","close"):
-            if c in out.columns:
-                out["price"] = out[c]
-                break
-        if "price" not in out.columns:
-            out["price"] = np.nan
-    
-    # 進階欄位別名整合（存在才帶出）
-    alias = {
-        "weight_change": ["weight_change","dw","delta_w"],
-        "delta_units":   ["delta_units","units_delta","unit_delta","share_delta"],
-        "exec_notional": ["exec_notional","notional","amount"],
-        "w_before":      ["w_before","w_prev"],
-        "w_after":       ["w_after","w_next"],
-        "shares_before": ["shares_before","units_before"],
-        "shares_after":  ["shares_after","units_after","units","shares"],
-        "cash_after":    ["cash_after","cash_post","cash"],
-        "equity_after":  ["equity_after","equity"],
-        "sell_tax":      ["sell_tax","tax"],
-    }
-    for tgt, cands in alias.items():
-        if tgt not in out.columns:
-            for c in cands:
-                if c in out.columns:
-                    out[tgt] = out[c]; break
-    if "weight_change" not in out.columns and {"w_before","w_after"} <= set(out.columns):
-        out["weight_change"] = out["w_after"] - out["w_before"]
-
-    # 最少三欄，保序擴充；舊端只讀前三欄也不會壞
-    base = ["trade_date","type","price"]
-    preferred = [
-        "weight_change","delta_units","exec_notional","w_before","w_after",
-        "shares_before","shares_after","equity_after","cash_after",
-        "invested_pct","cash_pct","position_value","fee_buy","fee_sell","sell_tax","comment"
-    ]
-    cols = base + [c for c in preferred if c in out.columns] + [c for c in out.columns if c not in base+preferred]
-    out = out[cols].sort_values("trade_date")
-    
-    return out
+# 使用 sss_core 統一版本的 normalize_trades_for_ui
+from sss_core.normalize import normalize_trades_for_ui
 
 # ---------------------------------------------------------------------
 # 序列化工具函式
 # ---------------------------------------------------------------------
 
-def pack_df(df: pd.DataFrame) -> str:
-    """將 DataFrame 序列化為 JSON 字串，使用 orient="split" + date_format="iso"
-    
-    Args:
-        df: 要序列化的 DataFrame
-        
-    Returns:
-        JSON 字串，空 DataFrame 回傳空字串
-    """
-    if df is None or len(df) == 0:
-        return ""
-    return df.to_json(orient="split", date_format="iso")
-
-def pack_series(s: pd.Series) -> str:
-    """將 Series 序列化為 JSON 字串，使用 orient="split" + date_format="iso"
-    
-    Args:
-        s: 要序列化的 Series
-        
-    Returns:
-        JSON 字串，空 Series 回傳空字串
-    """
-    if s is None or len(s) == 0:
-        return ""
-    return s.to_json(orient="split", date_format="iso")
+# 使用 sss_core 統一版本的 pack_df 和 pack_series
+from sss_core.schemas import pack_df, pack_series
 
 # ---------------------------------------------------------------------
 # 路徑設定：以目前檔案所在資料夾為工作根目錄（符合你的習慣）
@@ -556,13 +403,16 @@ def build_portfolio_ledger(open_px: pd.Series, w: pd.Series, cost: CostParams,
                 trades.append({
                     'trade_date': r.index[i],
                     'type': 'buy',
-                    'price_open': open_px.iloc[i],
-                    'weight_change': dw,          # 用 signed dw，買為正、賣為負
-                    'w_before': prev_w,
-                    'w_after': curr_w,
-                    'shares_before': shares_before,
-                    'shares_after': shares_after,
-                    'cost': total_cost
+                    'price_open': float(open_px.iloc[i]),
+                    'price': float(open_px.iloc[i]),
+                    'weight_change': float(dw),          # signed dw
+                    'w_before': float(prev_w),
+                    'w_after': float(curr_w),
+                    'shares_before': float(shares_before),
+                    'shares_after': float(shares_after),
+                    'exec_notional': float(exec_notional),
+                    'equity_after': float(E.iloc[i-1]),  # 交易發生在 i 開盤，交易後的總資產(名目)≈前一日 E 扣費用
+                    'cash_after': np.nan                 # 真正的日終現金在 daily_state 內，這裡僅供 UI 百分比推導（可選）
                 })
 
                 # 交易流水帳（詳細）
@@ -598,13 +448,16 @@ def build_portfolio_ledger(open_px: pd.Series, w: pd.Series, cost: CostParams,
                 trades.append({
                     'trade_date': r.index[i],
                     'type': 'sell',
-                    'price_open': open_px.iloc[i],
-                    'weight_change': dw,          # 注意：保留 signed（賣出為負）
-                    'w_before': prev_w,
-                    'w_after': curr_w,
-                    'shares_before': shares_before,
-                    'shares_after': shares_after,
-                    'cost': total_cost
+                    'price_open': float(open_px.iloc[i]),
+                    'price': float(open_px.iloc[i]),
+                    'weight_change': float(dw),          # 負數
+                    'w_before': float(prev_w),
+                    'w_after': float(curr_w),
+                    'shares_before': float(shares_before),
+                    'shares_after': float(shares_after),
+                    'exec_notional': float(exec_notional),
+                    'equity_after': float(E.iloc[i-1]),
+                    'cash_after': np.nan
                 })
 
                 # 交易流水帳（詳細）
@@ -1316,7 +1169,31 @@ def streamlit_ensemble_ui():
             # === 新增：持有權重變化圖 ===
             st.subheader("持有權重變化")
             if daily_state is not None and not daily_state.empty:
-                from SSSv096 import plot_weight_series
+                # 🔍 偵錯輸出：把真正要畫的資料直接吐出 csv
+                try:
+                    print(f"🔍 Streamlit 開始偵錯輸出：{method}")
+                    print(f"   daily_state type: {type(daily_state)}")
+                    if hasattr(daily_state, 'shape'):
+                        print(f"   daily_state shape: {daily_state.shape}")
+                    if hasattr(daily_state, 'columns'):
+                        print(f"   daily_state columns: {list(daily_state.columns)}")
+                    
+                    from sss_core.plotting import dump_equity_cash, dump_timeseries
+                    dump_equity_cash(f"streamlit_ensemble_{method}", daily_state)
+                    
+                    # 同時把權重與價格也吐出，避免 index 對不齊
+                    if 'w' in daily_state.columns:
+                        print(f"   weight column 'w' found, shape: {daily_state['w'].shape}")
+                        dump_timeseries(f"streamlit_ensemble_{method}", weight=daily_state['w'])
+                    else:
+                        print(f"   ⚠️ 沒有 'w' 欄位在 daily_state 中")
+                        print(f"   available columns: {list(daily_state.columns)}")
+                except Exception as e:
+                    print(f"❌ Streamlit 偵錯輸出失敗：{e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                from sss_core.plotting import plot_weight_series
                 fig_w = plot_weight_series(daily_state, trade_ledger)
                 st.plotly_chart(fig_w, use_container_width=True)
             else:
