@@ -1,0 +1,5 @@
+﻿strategy_label,trial_id,trades_path,params_json,score,seed,created_at
+test_strategy_1,001,test_trades_1.csv,"{""param1"": 10, ""param2"": 20}",0.85,12345,2024-01-01 12:00:00
+test_strategy_2,002,test_trades_2.csv,"{""param1"": 15, ""param2"": 25}",0.92,67890,2024-01-01 13:00:00
+test_strategy_1,001,test_trades_1.csv,"{""param1"": 10, ""param2"": 20}",0.85,12345,2024-01-01 12:00:00
+test_strategy_2,002,test_trades_2.csv,"{""param1"": 15, ""param2"": 25}",0.92,67890,2024-01-01 13:00:00

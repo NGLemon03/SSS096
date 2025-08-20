@@ -138,18 +138,18 @@ param_presets = {
 "Single 3": {"linlen": 80, "factor": 10, "smaalen": 60, "devwin": 20, "buy_mult": 0.4, "sell_mult": 1.5, "strategy_type": "single", "smaa_source": "Self"},
 "RMA_69": {"linlen": 151, "smaalen": 162, "rma_len": 55, "dev_len": 40, "factor": 40, "buy_mult": 1.4, "sell_mult": 3.15, "stop_loss": 0.1, "prom_factor": 0.5, "min_dist": 5, "strategy_type": "RMA", "smaa_source": "Factor (^TWII / 2414.TW)"},
 "RMA_669": {"linlen": 178, "smaalen": 112, "rma_len": 95, "dev_len": 95, "factor": 40, "buy_mult": 1.7, "sell_mult": 0.9, "stop_loss": 0.4, "prom_factor": 0.5, "min_dist": 5, "strategy_type": "RMA", "smaa_source": "Self"},
-"STM0": {"linlen": 25, "smaalen": 85, "factor": 80.0, "prom_factor": 9, "min_dist": 8, "buy_shift": 0, "exit_shift": 6, "vol_window": 90, "quantile_win": 65, "signal_cooldown_days": 7, "buy_mult": 0.15, "sell_mult": 0.1, "stop_loss": 0.13, 
+"STM0": {"linlen": 25, "smaalen": 85, "factor": 80.0, "prom_factor": 9, "min_dist": 8, "buy_shift": 0, "exit_shift": 6, "vol_window": 90, "quantile_win": 65, "signal_cooldown_days": 7, "buy_mult": 0.15, "sell_mult": 0.1, "stop_loss": 0.13, "delta_cap": 0.3,
                 "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
 "STM1": {"linlen": 15,"smaalen": 40,"factor": 40.0,"prom_factor": 70,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,"vol_window": 40,"quantile_win": 65,
- "signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,"strategy_type": "ssma_turn","smaa_source": "Self"},
+ "signal_cooldown_days": 10,"buy_mult": 1.55,"sell_mult": 2.1,"stop_loss": 0.15,"delta_cap": 0.3,"strategy_type": "ssma_turn","smaa_source": "Self"},
 "STM3": {"linlen": 20,"smaalen": 40,"factor": 40.0,"prom_factor": 69,"min_dist": 10,"buy_shift": 6,"exit_shift": 4,"vol_window": 45,"quantile_win": 55,
-    "signal_cooldown_days": 10,"buy_mult": 1.65,"sell_mult": 2.1,"stop_loss": 0.2,"strategy_type": "ssma_turn","smaa_source": "Self"},
+    "signal_cooldown_days": 10,"buy_mult": 1.65,"sell_mult": 2.1,"stop_loss": 0.2,"delta_cap": 0.3,"strategy_type": "ssma_turn","smaa_source": "Self"},
 "STM4": {"linlen": 10,"smaalen": 35,"factor": 40.0,"prom_factor": 68,"min_dist": 8,"buy_shift": 6,"exit_shift": 0,"vol_window": 40,"quantile_win": 65,
-    "signal_cooldown_days": 10,"buy_mult": 1.6,"sell_mult": 2.2,"stop_loss": 0.15,"strategy_type": "ssma_turn","smaa_source": "Factor (^TWII / 2414.TW)"},
-"STM_1939":{'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 48, 'min_dist': 14, 'buy_shift': 1, 'exit_shift': 1, 'vol_window': 80, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.6, 'stop_loss': 0.2,
+    "signal_cooldown_days": 10,"buy_mult": 1.6,"sell_mult": 2.2,"stop_loss": 0.15,"delta_cap": 0.3,"strategy_type": "ssma_turn","smaa_source": "Factor (^TWII / 2414.TW)"},
+"STM_1939":{'linlen': 20, 'smaalen': 240, 'factor': 40.0, 'prom_factor': 48, 'min_dist': 14, 'buy_shift': 1, 'exit_shift': 1, 'vol_window': 80, 'quantile_win': 175, 'signal_cooldown_days': 4, 'buy_mult': 1.45, 'sell_mult': 2.6, 'stop_loss': 0.2,"delta_cap": 0.3,
                 "strategy_type": "ssma_turn", "smaa_source": "Self"},
 
-"STM_2414_273": {"linlen": 175, "smaalen": 10, "factor": 40.0, "prom_factor": 47, "min_dist": 5, "buy_shift": 0, "exit_shift": 0, "vol_window": 90, "quantile_win": 165, "signal_cooldown_days": 4, "buy_mult": 1.25, "sell_mult": 1.7, "stop_loss": 0.4, "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
+"STM_2414_273": {"linlen": 175, "smaalen": 10, "factor": 40.0, "prom_factor": 47, "min_dist": 5, "buy_shift": 0, "exit_shift": 0, "vol_window": 90, "quantile_win": 165, "signal_cooldown_days": 4, "buy_mult": 1.25, "sell_mult": 1.7, "stop_loss": 0.4, "delta_cap": 0.3, "strategy_type": "ssma_turn", "smaa_source": "Factor (^TWII / 2414.TW)"},
 
 # 多策略組合策略（使用小型網格掃描優化後的參數）
 "Ensemble_Majority": {
@@ -864,10 +864,20 @@ def calculate_metrics(trades: List[Tuple[pd.Timestamp, float, pd.Timestamp]], df
     metrics['total_return'] = trade_metrics['equity'].iloc[-1] - 1
     years = max((trade_metrics.index[-1] - trade_metrics.index[0]).days / 365.25, 1)
     metrics['annual_return'] = (1 + metrics['total_return']) ** (1 / years) - 1
-    # metrics['max_drawdown'] = daily_drawdown.min() # 不再用這個
-    dd_series = daily_drawdown < 0
-    dd_dur = max((dd_series.groupby((~dd_series).cumsum()).cumcount() + 1).max(), 0) if dd_series.any() else 0
+
+    # 既有日內回撤（numpy 陣列）
+    dd_np = (daily_drawdown < 0).astype(bool)
+
+    # 轉成 pandas Series（索引用回 trade_metrics.index），才能安全 groupby
+    dd_series = pd.Series(dd_np, index=trade_metrics.index)
+
+    # 連續回撤區段的最長天數（True 連續段的長度最大值）
+    blocks = (~dd_series).cumsum()
+    dd_dur = int((dd_series.groupby(blocks).cumcount() + 1).where(dd_series).max() or 0)
     metrics['max_drawdown_duration'] = dd_dur
+    
+    # 回填 max_drawdown（安全地用 float 轉換）
+    metrics['max_drawdown'] = float(daily_drawdown.min())
     # metrics['calmar_ratio'] = metrics['annual_return'] / abs(metrics['max_drawdown']) if metrics['max_drawdown'] < 0 else np.nan
     metrics['num_trades'] = len(trade_metrics)
     metrics['win_rate'] = (trade_metrics['return'] > 0).sum() / metrics['num_trades'] if metrics['num_trades'] > 0 else 0
