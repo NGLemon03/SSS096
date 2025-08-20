@@ -48,6 +48,23 @@ init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREATE_LOGS=1
 logger = logging.getLogger("SSS.Ensemble")
 
 # ---------------------------------------------------------------------
+# 安全取值工具函式
+# ---------------------------------------------------------------------
+
+def _safe_equity_at(equity, dt):
+    """以 as-of 方式抓取 <= dt 的最近一筆權益值；若超界則夾在邊界。"""
+    import pandas as pd
+    if not isinstance(dt, pd.Timestamp):
+        dt = pd.to_datetime(dt)
+    idx = equity.index
+    pos = idx.searchsorted(dt, side="right") - 1
+    if pos < 0:
+        pos = 0
+    if pos >= len(equity):
+        pos = len(equity) - 1
+    return float(equity.iloc[pos])
+
+# ---------------------------------------------------------------------
 # 統一交易明細契約標準化函式
 # ---------------------------------------------------------------------
 
@@ -1208,3 +1225,361 @@ def streamlit_ensemble_ui():
 
 if __name__ == "__main__":
     main()
+
+# === PATCH: Risk valve signals（兼容只有收盤價的情況）===
+import numpy as np
+import pandas as pd
+
+def _get_col(df, *candidates):
+    cols = {c.lower(): c for c in df.columns}
+    for name in candidates:
+        key = name.lower()
+        if key in cols: 
+            return cols[key]
+    return None
+
+def compute_risk_valve_signals(benchmark_df: pd.DataFrame,
+                               slope20_thresh: float = 0.0,
+                               slope60_thresh: float = 0.0,
+                               atr_win: int = 20,
+                               atr_ref_win: int = 60,
+                               atr_ratio_mult: float = 1.3) -> pd.DataFrame:
+    """輸入：基準（日頻），欄至少有 close/收盤價；若無高低價自動回退。
+       輸出：含 slope_20d/60d、atr、atr_ratio、risk_trigger(bool) 的 DataFrame"""
+    b = benchmark_df.copy()
+    # 欄位對齊
+    c_close = _get_col(b, "收盤價", "close")
+    c_high  = _get_col(b, "最高價", "high")
+    c_low   = _get_col(b, "最低價", "low")
+    if c_close is None:
+        raise ValueError("benchmark_df 需包含 收盤價/close")
+
+    b = b.sort_index()
+    close = pd.to_numeric(b[c_close], errors="coerce")
+
+    # 斜率：用「t/t-n - 1」做簡潔斜率（符合你要的方向判斷）
+    b["slope_20d"] = close.pct_change(20)
+    b["slope_60d"] = close.pct_change(60)
+
+    # ATR：若無高低價，用 |Δclose| 近似 TR
+    prev_close = close.shift(1)
+    if c_high and c_low:
+        high = pd.to_numeric(b[c_high], errors="coerce")
+        low  = pd.to_numeric(b[c_low], errors="coerce")
+        tr = pd.concat([
+            (high - low),
+            (high - prev_close).abs(),
+            (low  - prev_close).abs()
+        ], axis=1).max(axis=1)
+    else:
+        tr = close.diff().abs()
+
+    b["atr"] = tr.rolling(atr_win, min_periods=atr_win).mean()
+    b["atr_ratio"] = b["atr"] / b["atr"].rolling(atr_ref_win, min_periods=atr_ref_win).mean()
+
+    # 風險觸發：兩斜率皆 < 門檻，且 ATR 抬頭超過倍率
+    b["risk_trigger"] = (b["slope_20d"] < slope20_thresh) & \
+                        (b["slope_60d"] < slope60_thresh) & \
+                        (b["atr_ratio"] > atr_ratio_mult)
+    return b[["slope_20d", "slope_60d", "atr", "atr_ratio", "risk_trigger"]]
+
+
+# === PATCH: 風險閥門施作在權重 ===
+def apply_valve_to_weights(w: pd.Series,
+                           risk_trigger: pd.Series,
+                           mode: str = "cap",   # "cap" 或 "ban_add"
+                           cap_level: float = 0.5) -> pd.Series:
+    """對每日目標權重 w 施作風險閥門：
+       - cap: 風險日將 w 限在 cap_level 以下
+       - ban_add: 風險日禁止「提高」倉位（允許減倉），用迭代法確保單調"""
+    w = w.copy().reindex(risk_trigger.index).ffill().fillna(0.0)
+    out = w.copy()
+
+    if mode == "cap":
+        mask = risk_trigger.reindex(w.index).fillna(False).astype(bool)
+        out[mask] = np.minimum(out[mask], cap_level)
+
+    elif mode == "ban_add":
+        mask = risk_trigger.reindex(w.index).fillna(False).astype(bool)
+        for i in range(1, len(out)):
+            if mask.iloc[i] and (out.iloc[i] > out.iloc[i-1]):
+                out.iloc[i] = out.iloc[i-1]  # 禁止增加
+    else:
+        raise ValueError("mode 需為 'cap' 或 'ban_add'")
+    return out.clip(0.0, 1.0)
+
+
+# === PATCH: 由 trade_ledger 建立「每筆盈虧%」與快照（引用 re.txt 做法）===
+def build_trade_snapshots_from_ledger(trade_ledger: pd.DataFrame) -> pd.DataFrame:
+    """以交易後權益/現金為資產快照，計算每筆盈虧%（只在有變動的交易日記一筆）"""
+    df = trade_ledger.copy()
+    # 欄名對齊
+    if "date" in df.columns: df.rename(columns={"date": "交易日期"}, inplace=True)
+    if "type" in df.columns: df.rename(columns={"type": "交易類型"}, inplace=True)
+    if "equity_after" in df.columns: df.rename(columns={"equity_after": "交易後權益"}, inplace=True)
+    if "cash_after" in df.columns: df.rename(columns={"cash_after": "交易後現金"}, inplace=True)
+    if "open" in df.columns: df.rename(columns={"open": "開盤價"}, inplace=True)
+    if "w_before" in df.columns: df.rename(columns={"w_before": "交易前權重"}, inplace=True)
+    if "w_after" in df.columns: df.rename(columns={"w_after": "交易後權重"}, inplace=True)
+
+    df["交易日期"] = pd.to_datetime(df["交易日期"], errors="coerce")
+    df = df.dropna(subset=["交易日期"]).sort_values("交易日期").reset_index(drop=True)
+
+    df["總資產"] = pd.to_numeric(df.get("交易後權益", 0), errors="coerce").fillna(0) + \
+                   pd.to_numeric(df.get("交易後現金", 0), errors="coerce").fillna(0)
+    df["前次總資產"] = df["總資產"].shift(1)
+    df["每筆盈虧"] = df["總資產"] - df["前次總資產"]
+    df["每筆盈虧%"] = (df["每筆盈虧"] / df["前次總資產"]).replace([np.inf, -np.inf], np.nan) * 100
+    df.loc[df.index.min(), ["每筆盈虧", "每筆盈虧%"]] = 0.0
+    return df
+
+
+# === PATCH: 只用賣出列計交易統計 & MDD 以日資產曲線算 ===
+def _sell_returns_pct_from_ledger(trade_ledger: pd.DataFrame) -> pd.Series:
+    tl = trade_ledger.copy()
+    if "type" in tl.columns: tl.rename(columns={"type":"交易類型"}, inplace=True)
+    if "equity_after" in tl.columns: tl.rename(columns={"equity_after":"交易後權益"}, inplace=True)
+    if "equity_open_after_trade" in tl.columns: tl.rename(columns={"equity_open_after_trade":"交易後開盤權益"}, inplace=True)
+    tl = tl.sort_values("date" if "date" in tl.columns else "交易日期")
+    # 用「交易後開盤權益 → 交易日終權益」的變化當該筆交易的日損益（含成本）
+    if "交易後開盤權益" in tl.columns and "交易後權益" in tl.columns:
+        delta = (tl["交易後權益"] - tl["交易後開盤權益"]) / tl["交易後開盤權益"]
+        tl["盈虧%"] = delta * 100.0
+    elif "盈虧%" not in tl.columns:
+        tl["盈虧%"] = 0.0
+    mask_sell = tl["交易類型"].astype(str).str.lower().eq("sell")
+    return pd.to_numeric(tl.loc[mask_sell, "盈虧%"], errors="coerce").dropna()
+
+def _mdd_from_daily_equity(equity: pd.Series) -> float:
+    eq = pd.to_numeric(equity, errors="coerce").dropna()
+    if eq.empty: return 0.0
+    dd = eq / eq.cummax() - 1.0
+    return float(dd.min())
+
+def risk_valve_backtest(open_px: pd.Series,
+                        w: pd.Series,
+                        cost,
+                        benchmark_df: pd.DataFrame,
+                        mode: str = "cap",
+                        cap_level: float = 0.5,
+                        slope20_thresh: float = 0.0,
+                        slope60_thresh: float = 0.0,
+                        atr_win: int = 20,
+                        atr_ref_win: int = 60,
+                        atr_ratio_mult: float = 1.3) -> dict:
+    """回傳：原始與閥門版本的績效、右尾削減度、以及兩版 equity/ledger"""
+    sig = compute_risk_valve_signals(benchmark_df, slope20_thresh, slope60_thresh,
+                                     atr_win, atr_ref_win, atr_ratio_mult)
+    w2 = apply_valve_to_weights(w, sig["risk_trigger"], mode, cap_level)
+
+    # 原始版本
+    daily_state1, ledger1 = build_portfolio_ledger(open_px, w, cost)
+    # 閥門版本
+    daily_state2, ledger2 = build_portfolio_ledger(open_px, w2, cost)
+
+    # 交易統計（只用賣出列；符合 re.txt 對實現損益的口徑）
+    r1 = _sell_returns_pct_from_ledger(ledger1)
+    r2 = _sell_returns_pct_from_ledger(ledger2)
+    pf1 = (r1[r1>0].sum() / abs(r1[r1<0].sum())) if (r1[r1<0].sum()!=0) else np.inf
+    pf2 = (r2[r2>0].sum() / abs(r2[r2<0].sum())) if (r2[r2<0].sum()!=0) else np.inf
+    mdd1 = _mdd_from_daily_equity(daily_state1["equity"])
+    mdd2 = _mdd_from_daily_equity(daily_state2["equity"])
+
+    # 右尾削減：比較兩版的「>P90 的正報酬總和」
+    def right_tail_sum(x: pd.Series):
+        if x.empty: return 0.0
+        thr = x.quantile(0.90)
+        return float(x[x > max(thr, 0)].sum())
+    rt1 = right_tail_sum(r1)
+    rt2 = right_tail_sum(r2)
+    right_tail_reduction = (rt1 - rt2)
+
+    return {
+        "signals": sig,
+        "weights_orig": w,
+        "weights_valve": w2,
+        "daily_state_orig": daily_state1,
+        "daily_state_valve": daily_state2,
+        "trade_ledger_orig": ledger1,
+        "trade_ledger_valve": ledger2,
+        "metrics": {
+            "pf_orig": float(pf1), "pf_valve": float(pf2),
+            "mdd_orig": float(mdd1), "mdd_valve": float(mdd2),
+            "right_tail_sum_orig": float(rt1), "right_tail_sum_valve": float(rt2),
+            "right_tail_reduction": float(right_tail_reduction)
+        }
+    }
+
+
+# === PATCH: 交易貢獻拆解（按加碼/減碼階段）===
+def trade_contribution_by_phase(trade_ledger: pd.DataFrame,
+                                daily_equity: pd.Series,
+                                min_spacing_days: int = 0,
+                                cooldown_days: int = 0) -> pd.DataFrame:
+    """將交易依『權重變化正/負』分段，統計各階段的賣出實現報酬與該段內的 MDD。"""
+    tl = trade_ledger.copy()
+    # 欄對齊
+    for a,b in [("date","交易日期"),("type","交易類型"),("w_before","交易前權重"),("w_after","交易後權重")]:
+        if a in tl.columns: tl.rename(columns={a:b}, inplace=True)
+    tl["交易日期"] = pd.to_datetime(tl["交易日期"], errors="coerce")
+    tl = tl.dropna(subset=["交易日期"]).sort_values("交易日期").reset_index(drop=True)
+    tl["dw"] = pd.to_numeric(tl["交易後權重"], errors="coerce") - pd.to_numeric(tl["交易前權重"], errors="coerce")
+
+    # 可選：施加最小間距/冷卻（在分段前對過密買單降噪）
+    if min_spacing_days > 0:
+        last_buy_dt = None
+        for i, row in tl.iterrows():
+            if row["dw"] > 0:
+                if last_buy_dt is not None and (row["交易日期"] - last_buy_dt).days < min_spacing_days:
+                    tl.at[i, "dw"] = 0.0  # 忽略這筆微小加碼
+                else:
+                    last_buy_dt = row["交易日期"]
+    if cooldown_days > 0:
+        cooldown_until = None
+        for i, row in tl.iterrows():
+            if cooldown_until and row["交易日期"] <= cooldown_until and row["dw"] > 0:
+                tl.at[i, "dw"] = 0.0
+            if row["dw"] > 0:
+                cooldown_until = row["交易日期"] + pd.Timedelta(days=cooldown_days)
+
+    # 分段：連續 dw>0 視為 accumulation；連續 dw<0 視為 distribution
+    phases = []
+    if tl.empty: 
+        return pd.DataFrame(columns=["階段","開始日期","結束日期","交易筆數","賣出報酬總和(%)","階段內MDD(%)"])
+
+    cur_sign = 0
+    cur_start = tl.loc[0, "交易日期"]
+    for i, row in tl.iterrows():
+        s = 1 if row["dw"] > 0 else (-1 if row["dw"] < 0 else cur_sign)
+        if i == 0:
+            cur_sign = s
+            cur_start = row["交易日期"]
+            continue
+        if s != cur_sign:
+            prev_dt = tl.loc[i-1, "交易日期"]
+            phases.append((cur_sign, cur_start, prev_dt))
+            cur_sign = s
+            cur_start = row["交易日期"]
+    phases.append((cur_sign, cur_start, tl.loc[tl.index.max(), "交易日期"]))
+
+    # 計算每段的 賣出實現報酬總和 + 段內 MDD
+    out_rows = []
+    eq = daily_equity.copy()
+    eq.index = pd.to_datetime(eq.index)
+    sell_ret = _sell_returns_pct_from_ledger(trade_ledger)
+    tl_idxed = tl.copy()  # 使用降噪後的資料
+    tl_idxed["交易日期"] = pd.to_datetime(tl_idxed["date"] if "date" in tl_idxed.columns else tl_idxed["交易日期"])
+
+    for sign, sdt, edt in phases:
+        phase = "加碼階段" if sign>0 else ("減碼階段" if sign<0 else "持平階段")
+        mask_t = (tl_idxed["交易日期"]>=sdt) & (tl_idxed["交易日期"]<=edt)
+        sells_in_phase = _sell_returns_pct_from_ledger(tl_idxed.loc[mask_t])
+        ret_sum = float(sells_in_phase.sum())
+        # 日內 MDD
+        eq_slice = eq.loc[(eq.index>=sdt) & (eq.index<=edt)]
+        mdd = _mdd_from_daily_equity(eq_slice)
+        out_rows.append({
+            "階段": phase, 
+            "開始日期": sdt.strftime("%m/%d"), 
+            "結束日期": edt.strftime("%m/%d"),
+            "交易筆數": int(mask_t.sum()),
+            "賣出報酬總和(%)": round(ret_sum, 1),
+            "階段內MDD(%)": round(mdd*100.0, 1)
+        })
+    
+    # 創建結果 DataFrame
+    result_df = pd.DataFrame(out_rows)
+    
+    # ---- ★ 新增：以原始日期算『階段淨貢獻(%)』『是否成功』 ----
+    if {"開始日期","結束日期"}.issubset(result_df.columns):
+        # 先保存原始日期（避免被格式化覆蓋）
+        start_raw = []
+        end_raw = []
+        for _, row in result_df.iterrows():
+            if row["開始日期"] and row["結束日期"]:
+                # 從 MM/DD 格式反推完整日期（假設為當前年份）
+                try:
+                    start_dt = pd.to_datetime(f"2024/{row['開始日期']}", format="%Y/%m/%d")
+                    end_dt = pd.to_datetime(f"2024/{row['結束日期']}", format="%Y/%m/%d")
+                    start_raw.append(start_dt)
+                    end_raw.append(end_dt)
+                except:
+                    start_raw.append(None)
+                    end_raw.append(None)
+            else:
+                start_raw.append(None)
+                end_raw.append(None)
+        
+        # 計算階段淨貢獻
+        start_eq = []
+        end_eq = []
+        for start_dt, end_dt in zip(start_raw, end_raw):
+            if start_dt is not None and end_dt is not None:
+                start_eq.append(_safe_equity_at(eq, start_dt))
+                end_eq.append(_safe_equity_at(eq, end_dt))
+            else:
+                start_eq.append(None)
+                end_eq.append(None)
+        
+        # 計算淨貢獻百分比和是否成功
+        net_contrib = []
+        is_success = []
+        for start_val, end_val in zip(start_eq, end_eq):
+            if start_val is not None and end_val is not None and start_val != 0:
+                net_pct = (end_val / start_val - 1.0) * 100.0
+                net_contrib.append(round(net_pct, 2))
+                is_success.append(net_pct > 0)
+            else:
+                net_contrib.append(None)
+                is_success.append(None)
+        
+        result_df["階段淨貢獻(%)"] = net_contrib
+        result_df["是否成功"] = is_success
+    
+    # 數字欄位 round（如已處理可略）
+    for col in ["賣出報酬總和(%)","階段內MDD(%)"]:
+        if col in result_df.columns:
+            result_df[col] = pd.to_numeric(result_df[col], errors="coerce").round(2)
+    
+    # 欄序
+    order = ["階段","開始日期","結束日期","交易筆數",
+             "階段淨貢獻(%)","賣出報酬總和(%)","階段內MDD(%)","是否成功"]
+    result_df = result_df[[c for c in order if c in result_df.columns]]
+    
+    # ---- ★ 最後才把日期顯示成 MM/DD ----
+    for c in ("開始日期","結束日期"):
+        if c in result_df.columns:
+            # 重新格式化為 MM/DD
+            for i, row in result_df.iterrows():
+                if row[c] and isinstance(row[c], str) and "/" in row[c]:
+                    # 已經是 MM/DD 格式，保持不變
+                    pass
+                elif row[c]:
+                    try:
+                        dt = pd.to_datetime(row[c])
+                        result_df.at[i, c] = dt.strftime("%m/%d")
+                    except:
+                        pass
+    
+    # 添加統計摘要行
+    if not result_df.empty:
+        # 計算平均每段報酬 vs 平均每段 MDD
+        avg_return = result_df["賣出報酬總和(%)"].mean()
+        avg_mdd = result_df["階段內MDD(%)"].mean()
+        
+        # 添加摘要行
+        summary_row = {
+            "階段": f"📊 統計摘要 (間距:{min_spacing_days}天, 冷卻:{cooldown_days}天)",
+            "開始日期": "",
+            "結束日期": "",
+            "交易筆數": len(result_df),
+            "階段淨貢獻(%)": "",
+            "賣出報酬總和(%)": f"平均: {avg_return:.1f}%",
+            "階段內MDD(%)": f"平均: {avg_mdd:.1f}%",
+            "是否成功": ""
+        }
+        
+        # 將摘要行添加到結果中
+        result_df = pd.concat([result_df, pd.DataFrame([summary_row])], ignore_index=True)
+    
+    return result_df

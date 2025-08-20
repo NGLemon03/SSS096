@@ -1,5 +1,6 @@
 # logging_config.py
 """
+修改記錄：2025-01-19 23:28 - 修復時間戳記問題，改為動態生成
 修改記錄：2025-01-12 - 移除 import 時自動建立目錄的副作用，改為顯式初始化
 """
 import logging
@@ -13,13 +14,15 @@ LOG_DIR = ROOT / "log"
 
 # 移除自動建立目錄的副作用，改為按需建立
 
-# 生成時間戳記用於日誌檔案名稱
-TIMESTAMP = datetime.now().strftime('%Y%m%d_%H%M%S')
+# 移除靜態時間戳記，改為動態生成
 
 # 舊的 LOGGING_DICT 已移除，改用 build_logging_dict() 函數
 
 def build_logging_dict(log_root: Path, enable_file: bool) -> dict:
     """根據是否啟用檔案日誌建立配置字典"""
+    # 動態生成時間戳記
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
     handlers = {
         "console": {
             "class": "logging.StreamHandler",
@@ -39,98 +42,98 @@ def build_logging_dict(log_root: Path, enable_file: bool) -> dict:
             "system_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"System_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"System_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "INFO",
             },
             "app_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "app" / f"app_dash_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / "app" / f"app_dash_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "sss_core_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "core" / f"sss_core_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / "core" / f"sss_core_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "ensemble_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "ensemble" / f"ensemble_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / "ensemble" / f"ensemble_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "sss_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"SSS_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"SSS_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "sss_error_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"SSS_errors_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"SSS_errors_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "ERROR",
             },
             "optuna_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"Optuna_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"Optuna_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "optuna_error_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"Optuna_errors_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"Optuna_errors_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "ERROR",
             },
             "optuna_trial_file": {
                 "class": "logging.FileHandler",
                 "formatter": "standard",
-                "filename": str((log_root / f"Optuna_trials_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"Optuna_trials_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "INFO",
             },
             "os_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"OS_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"OS_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "os_error_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"OS_errors_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"OS_errors_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "ERROR",
             },
             "data_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"Data_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"Data_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "backtest_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / f"Backtest_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / f"Backtest_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "DEBUG",
             },
             "error_file": {
                 "class": "logging.FileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "errors" / f"exceptions_{TIMESTAMP}.log").resolve()),
+                "filename": str((log_root / "errors" / f"exceptions_{timestamp}.log").resolve()),
                 "encoding": "utf-8-sig",
                 "level": "ERROR",
             },

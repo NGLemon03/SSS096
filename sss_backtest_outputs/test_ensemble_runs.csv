@@ -1,0 +1,3 @@
+﻿run_id,method,params_json,strategies_used,num_strategies,total_return,mdd,sharpe,start,end
+test_run_001,majority,"{""majority_k"": 3}","[""test_strategy_1"", ""test_strategy_2""]",2,0.15,0.05,1.2,2024-01-01,2024-12-31
+test_run_001,majority,"{""majority_k"": 3}","[""test_strategy_1"", ""test_strategy_2""]",2,0.15,0.05,1.2,2024-01-01,2024-12-31
