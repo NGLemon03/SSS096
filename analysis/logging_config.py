@@ -1,142 +1,103 @@
-# logging_config.py
+# -*- coding: utf-8 -*-
 """
-修改記錄：2025-01-19 23:28 - 修復時間戳記問題，改為動態生成
-修改記錄：2025-01-12 - 移除 import 時自動建立目錄的副作用，改為顯式初始化
+統一日誌配置系統 - 按需初始化版本
+路徑：#analysis/logging_config.py
+更新時間：2025-01-20 16:00
+作者：AI Assistant
+
+統一的日誌配置，支援檔案和控制台輸出
+採用懶加載模式，避免模組載入時自動創建空白日誌檔案
 """
+
+import os
 import logging
 import logging.config
-import os
 from pathlib import Path
 from datetime import datetime
 
+# 基本路徑設定
 ROOT = Path(__file__).resolve().parent
 LOG_DIR = ROOT / "log"
 
-# 移除自動建立目錄的副作用，改為按需建立
+# 全域變數來追蹤初始化狀態
+_logging_initialized = False
+_file_logging_enabled = False
 
-# 移除靜態時間戳記，改為動態生成
+def ensure_log_dirs():
+    """確保日誌目錄存在"""
+    subdirs = ["app", "core", "ensemble", "errors", "system"]
+    for subdir in subdirs:
+        (LOG_DIR / subdir).mkdir(parents=True, exist_ok=True)
 
-# 舊的 LOGGING_DICT 已移除，改用 build_logging_dict() 函數
+class DelayedFileHandler(logging.FileHandler):
+    """延遲檔案創建的 FileHandler"""
+    def __init__(self, filename, mode='a', encoding=None, delay=True):
+        # 使用 delay=True 來延遲檔案創建，直到第一次寫入
+        super().__init__(filename, mode, encoding, delay=delay)
 
-def build_logging_dict(log_root: Path, enable_file: bool) -> dict:
-    """根據是否啟用檔案日誌建立配置字典"""
-    # 動態生成時間戳記
+def build_logging_config(enable_file: bool = True) -> dict:
+    """構建統一的日誌配置"""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
+    # 基本 handlers（總是啟用）
     handlers = {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "standard",
             "level": "INFO",
-        },
+        }
     }
     
     if enable_file:
-        # 只在需要檔案日誌時才建立目錄和檔案 handlers
-        # 先建立必要的子目錄
-        subdirs = ["app", "core", "ensemble", "errors"]
-        for subdir in subdirs:
-            (log_root / subdir).mkdir(parents=True, exist_ok=True)
+        ensure_log_dirs()
         
+        # 檔案 handlers - 使用延遲創建
         handlers.update({
-            "system_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"System_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "INFO",
-            },
             "app_file": {
-                "class": "logging.FileHandler",
+                "class": "analysis.logging_config.DelayedFileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "app" / f"app_dash_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
+                "filename": str((LOG_DIR / "app" / f"app_{timestamp}.log").resolve()),
+                "encoding": "utf-8",
                 "level": "DEBUG",
+                "mode": "w",
+                "delay": True,
             },
-            "sss_core_file": {
-                "class": "logging.FileHandler",
+            "core_file": {
+                "class": "analysis.logging_config.DelayedFileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "core" / f"sss_core_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
+                "filename": str((LOG_DIR / "core" / f"core_{timestamp}.log").resolve()),
+                "encoding": "utf-8",
                 "level": "DEBUG",
+                "mode": "w",
+                "delay": True,
             },
             "ensemble_file": {
-                "class": "logging.FileHandler",
+                "class": "analysis.logging_config.DelayedFileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "ensemble" / f"ensemble_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
+                "filename": str((LOG_DIR / "ensemble" / f"ensemble_{timestamp}.log").resolve()),
+                "encoding": "utf-8",
                 "level": "DEBUG",
-            },
-            "sss_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"SSS_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "DEBUG",
-            },
-            "sss_error_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"SSS_errors_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "ERROR",
-            },
-            "optuna_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"Optuna_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "DEBUG",
-            },
-            "optuna_error_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"Optuna_errors_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "ERROR",
-            },
-            "optuna_trial_file": {
-                "class": "logging.FileHandler",
-                "formatter": "standard",
-                "filename": str((log_root / f"Optuna_trials_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "INFO",
-            },
-            "os_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"OS_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "DEBUG",
-            },
-            "os_error_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"OS_errors_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "ERROR",
-            },
-            "data_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"Data_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "DEBUG",
-            },
-            "backtest_file": {
-                "class": "logging.FileHandler",
-                "formatter": "detailed",
-                "filename": str((log_root / f"Backtest_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
-                "level": "DEBUG",
+                "mode": "w",
+                "delay": True,
             },
             "error_file": {
-                "class": "logging.FileHandler",
+                "class": "analysis.logging_config.DelayedFileHandler",
                 "formatter": "detailed",
-                "filename": str((log_root / "errors" / f"exceptions_{timestamp}.log").resolve()),
-                "encoding": "utf-8-sig",
+                "filename": str((LOG_DIR / "errors" / f"errors_{timestamp}.log").resolve()),
+                "encoding": "utf-8",
                 "level": "ERROR",
+                "mode": "w",
+                "delay": True,
             },
+            "system_file": {
+                "class": "analysis.logging_config.DelayedFileHandler",
+                "formatter": "detailed",
+                "filename": str((LOG_DIR / "system" / f"system_{timestamp}.log").resolve()),
+                "encoding": "utf-8",
+                "level": "INFO",
+                "mode": "w",
+                "delay": True,
+            }
         })
     
     return {
@@ -144,200 +105,116 @@ def build_logging_dict(log_root: Path, enable_file: bool) -> dict:
         "disable_existing_loggers": False,
         "formatters": {
             "standard": {
-                "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+                "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S"
             },
             "detailed": {
-                "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)d] %(message)s"
-            },
-            "simple": {
-                "format": "%(levelname)s [%(name)s] %(message)s"
+                "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)d] %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S"
             }
         },
         "handlers": handlers,
         "loggers": {
-            "": {
-                "handlers": ["console"] + (["system_file"] if enable_file else []),
-                "level": "INFO",
-                "propagate": False,
-            },
             "SSS.App": {
-                "handlers": ["console"] + (["app_file"] if enable_file else []),
+                "handlers": ["console"] + (["app_file", "error_file"] if enable_file else []),
                 "level": "DEBUG",
                 "propagate": False,
             },
             "SSS.Core": {
-                "handlers": ["console"] + (["sss_core_file"] if enable_file else []),
+                "handlers": ["console"] + (["core_file", "error_file"] if enable_file else []),
                 "level": "DEBUG",
                 "propagate": False,
             },
             "SSS.Ensemble": {
-                "handlers": ["console"] + (["ensemble_file"] if enable_file else []),
+                "handlers": ["console"] + (["ensemble_file", "error_file"] if enable_file else []),
                 "level": "DEBUG",
                 "propagate": False,
             },
-            "SSSv095b1": {
-                "handlers": ["console"] + (["sss_file", "sss_error_file"] if enable_file else []),
-                "level": "DEBUG",
+            "SSS.System": {
+                "handlers": ["console"] + (["system_file", "error_file"] if enable_file else []),
+                "level": "INFO",
                 "propagate": False,
-            },
-            "SSSv095b2": {
-                "handlers": ["console"] + (["sss_file", "sss_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "SSSv095a1": {
-                "handlers": ["console"] + (["sss_file", "sss_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "SSSv095a2": {
-                "handlers": ["console"] + (["sss_file", "sss_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "SSSv094a4": {
-                "handlers": ["console"] + (["sss_file", "sss_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "optuna_13": {
-                "handlers": ["console"] + (["optuna_file", "optuna_error_file", "optuna_trial_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "optuna_12": {
-                "handlers": ["console"] + (["sss_file", "sss_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "optuna_10": {
-                "handlers": ["console"] + (["optuna_file", "optuna_error_file", "optuna_trial_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "optuna_9": {
-                "handlers": ["console"] + (["optuna_file", "optuna_error_file", "optuna_trial_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "optuna_F": {
-                "handlers": ["console"] + (["optuna_file", "optuna_error_file", "optuna_trial_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "OSv3": {
-                "handlers": ["console"] + (["os_file", "os_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "OSv2": {
-                "handlers": ["console"] + (["os_file", "os_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "OSv1": {
-                "handlers": ["console"] + (["os_file", "os_error_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "data_loader": {
-                "handlers": ["console"] + (["data_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "data": {
-                "handlers": ["console"] + (["data_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "backtest": {
-                "handlers": ["console"] + (["backtest_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "metrics": {
-                "handlers": ["console"] + (["backtest_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "TestBuyAndHold": {
-                "handlers": ["console"] + (["system_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "analysis": {
-                "handlers": ["console"] + (["system_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "analysis_params": {
-                "handlers": ["console"] + (["system_file"] if enable_file else []),
-                "level": "DEBUG",
-                "propagate": False,
-            },
-            "errors": {
-                "handlers": ["console"] + (["error_file"] if enable_file else []),
-                "level": "ERROR",
-                "propagate": False,
-            },
+            }
+        },
+        "root": {
+            "handlers": ["console"] + (["system_file"] if enable_file else []),
+            "level": "INFO",
         }
     }
 
-def init_logging(enable_file: bool | None = None) -> None:
-    """顯式初始化；若沒開環境變數就只開 console，不建 log 目錄。"""
+def init_logging(enable_file: bool = None) -> None:
+    """初始化日誌系統"""
+    global _logging_initialized, _file_logging_enabled
+    
+    # 如果沒有指定，檢查環境變數
     if enable_file is None:
-        enable_file = os.getenv("SSS_CREATE_LOGS", "0").lower() in ("1", "true", "yes")
+        enable_file = os.environ.get("SSS_CREATE_LOGS", "0") == "1"
     
+    # 記錄設定狀態
+    _file_logging_enabled = enable_file
+    
+    # 清除現有的 logger 配置
+    for logger_name in ["SSS.App", "SSS.Core", "SSS.Ensemble", "SSS.System"]:
+        existing_logger = logging.getLogger(logger_name)
+        existing_logger.handlers.clear()
+        existing_logger.propagate = False
+    
+    # 應用新配置
+    config_dict = build_logging_config(enable_file)
+    logging.config.dictConfig(config_dict)
+    
+    # 標記為已初始化
+    _logging_initialized = True
+    
+    # 驗證配置（僅在啟用檔案日誌時輸出詳細訊息）
     if enable_file:
-        # 只在需要檔案日誌時才建立目錄
-        from analysis import config as cfg
-        cfg.ensure_dir(cfg.LOG_DIR, force=True)
-    
-    logging.config.dictConfig(build_logging_dict(LOG_DIR, enable_file))
-
-def setup_logging():
-    """向後相容的函數，預設只啟用 console"""
-    init_logging(False)
-    
-def get_logger(name: str) -> logging.Logger:
-    """
-    獲取指定名稱的日誌器
-    
-    Args:
-        name: 日誌器名稱
+        system_logger = logging.getLogger("SSS.System")
+        system_logger.info("=== 統一日誌系統初始化完成 ===")
+        system_logger.info(f"檔案日誌啟用: {enable_file}")
+        system_logger.info(f"日誌目錄: {LOG_DIR.resolve()}")
         
-    Returns:
-        logging.Logger: 配置好的日誌器
-    """
+        # 強制刷新所有 handlers
+        for handler in system_logger.handlers:
+            if hasattr(handler, 'flush'):
+                handler.flush()
+
+def get_logger(name: str) -> logging.Logger:
+    """獲取配置好的日誌器（真正的懶加載）"""
+    global _logging_initialized
+    
+    # 如果還沒初始化，僅返回基本的 logger（不創建檔案）
+    if not _logging_initialized:
+        # 設定基本的控制台日誌格式
+        logger = logging.getLogger(name)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s %(levelname)s [%(name)s] %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+            logger.propagate = False
+        return logger
+    
     return logging.getLogger(name)
 
-def setup_module_logging(module_name: str, level: str = "INFO") -> logging.Logger:
-    """
-    為特定模組設置日誌器
+def ensure_logging_ready(logger_name: str = None) -> None:
+    """確保日誌系統已準備就緒，僅在需要時初始化"""
+    global _logging_initialized, _file_logging_enabled
     
-    Args:
-        module_name: 模組名稱
-        level: 日誌級別
-        
-    Returns:
-        logging.Logger: 配置好的日誌器
-    """
+    if not _logging_initialized:
+        # 檢查環境變數決定是否啟用檔案日誌
+        enable_file = os.environ.get("SSS_CREATE_LOGS", "0") == "1"
+        init_logging(enable_file=enable_file)
+
+def setup_logging():
+    """設置日誌系統（向後兼容）"""
+    init_logging(False)
+
+def setup_module_logging(module_name: str, level: str = "INFO") -> logging.Logger:
+    """設置模組日誌（向後兼容）"""
     logger = logging.getLogger(module_name)
     logger.setLevel(getattr(logging, level.upper()))
     return logger
-
-# 預定義的日誌器名稱常量
-LOGGER_NAMES = {
-    "SSS": "SSSv095b2",
-    "OPTUNA": "optuna_13", 
-    "OS": "OSv3",
-    "DATA": "data_loader",
-    "BACKTEST": "backtest",
-    "METRICS": "metrics",
-    "SYSTEM": "",
-    "ERRORS": "errors",
-    # 新增：三個主要 logger
-    "APP": "SSS.App",
-    "CORE": "SSS.Core", 
-    "ENSEMBLE": "SSS.Ensemble"
-}

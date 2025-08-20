@@ -11,10 +11,9 @@ import json
 from datetime import datetime
 import logging
 
-# 設置 logger
-from analysis.logging_config import init_logging
-init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREENT_LOGS=1
-logger = logging.getLogger("SSS.ListFolder")
+# 設置 logger - 按需初始化
+from analysis.logging_config import get_logger
+logger = get_logger("SSS.System")
 
 def get_file_size_str(size_bytes):
     """將字節數轉換為人類可讀的文件大小字符串"""

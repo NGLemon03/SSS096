@@ -42,10 +42,21 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-# 設置 logger - 使用新的顯式初始化
-from analysis.logging_config import init_logging
-init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREATE_LOGS=1
-logger = logging.getLogger("SSS.Ensemble")
+# 設置 logger - 使用按需初始化
+from analysis.logging_config import get_logger, init_logging
+import os
+
+# 設定環境變數
+os.environ["SSS_CREATE_LOGS"] = "1"
+
+# 獲取日誌器（懶加載）
+logger = get_logger("SSS.Ensemble")
+
+def _initialize_ensemble_logging():
+    """初始化 Ensemble 日誌系統"""
+    init_logging(enable_file=True)
+    logger.info("=== Ensemble Tab 啟動 - 統一日誌系統 ===")
+    return logger
 
 # ---------------------------------------------------------------------
 # 安全取值工具函式
@@ -1234,20 +1245,28 @@ def _get_col(df, *candidates):
     cols = {c.lower(): c for c in df.columns}
     for name in candidates:
         key = name.lower()
-        if key in cols: 
+        if key in cols:
             return cols[key]
     return None
 
-def compute_risk_valve_signals(benchmark_df: pd.DataFrame,
-                               slope20_thresh: float = 0.0,
-                               slope60_thresh: float = 0.0,
-                               atr_win: int = 20,
-                               atr_ref_win: int = 60,
-                               atr_ratio_mult: float = 1.3) -> pd.DataFrame:
-    """輸入：基準（日頻），欄至少有 close/收盤價；若無高低價自動回退。
-       輸出：含 slope_20d/60d、atr、atr_ratio、risk_trigger(bool) 的 DataFrame"""
+def compute_risk_valve_signals(
+    benchmark_df: pd.DataFrame,
+    slope20_thresh: float = 0.0,
+    slope60_thresh: float = 0.0,
+    atr_win: int = 20,
+    atr_ref_win: int = 60,
+    atr_ratio_mult: float = 1.0,
+    *,
+    use_slopes: bool = True,
+    slope_method: str = "polyfit",   # "polyfit"（增強法原版）或 "pct"
+    atr_cmp: str = "gt"              # "gt"（>，增強法原版）或 "ge"（≥）
+) -> pd.DataFrame:
+    """
+    回傳欄位：slope_20d, slope_60d, atr, atr_ratio, risk_trigger
+    - 增強法原版：use_slopes=True, slope_method="polyfit", atr_cmp="gt"
+    - ATR-only（你先前的新口徑）：use_slopes=False, atr_cmp="ge"
+    """
     b = benchmark_df.copy()
-    # 欄位對齊
     c_close = _get_col(b, "收盤價", "close")
     c_high  = _get_col(b, "最高價", "high")
     c_low   = _get_col(b, "最低價", "low")
@@ -1256,31 +1275,42 @@ def compute_risk_valve_signals(benchmark_df: pd.DataFrame,
 
     b = b.sort_index()
     close = pd.to_numeric(b[c_close], errors="coerce")
-
-    # 斜率：用「t/t-n - 1」做簡潔斜率（符合你要的方向判斷）
-    b["slope_20d"] = close.pct_change(20)
-    b["slope_60d"] = close.pct_change(60)
-
-    # ATR：若無高低價，用 |Δclose| 近似 TR
     prev_close = close.shift(1)
+
+    # --- 斜率（兩種口徑擇一）---
+    if use_slopes:
+        if slope_method == "polyfit":
+            def _poly(x, n):
+                return np.polyfit(np.arange(len(x)), x, 1)[0] if len(x) == n else np.nan
+            b["slope_20d"] = close.rolling(20).apply(lambda x: _poly(x, 20), raw=False)
+            b["slope_60d"] = close.rolling(60).apply(lambda x: _poly(x, 60), raw=False)
+        else:
+            b["slope_20d"] = close.pct_change(20)
+            b["slope_60d"] = close.pct_change(60)
+    else:
+        b["slope_20d"] = np.nan
+        b["slope_60d"] = np.nan
+
+    # --- ATR 與 ATR 比值 ---
     if c_high and c_low:
         high = pd.to_numeric(b[c_high], errors="coerce")
         low  = pd.to_numeric(b[c_low], errors="coerce")
-        tr = pd.concat([
-            (high - low),
-            (high - prev_close).abs(),
-            (low  - prev_close).abs()
-        ], axis=1).max(axis=1)
+        tr = pd.concat([(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
     else:
-        tr = close.diff().abs()
+        tr = close.diff().abs()  # 無高低價時的近似
 
     b["atr"] = tr.rolling(atr_win, min_periods=atr_win).mean()
-    b["atr_ratio"] = b["atr"] / b["atr"].rolling(atr_ref_win, min_periods=atr_ref_win).mean()
+    b["atr_ref"] = b["atr"].rolling(atr_ref_win, min_periods=atr_ref_win).mean()
+    b["atr_ratio"] = b["atr"] / b["atr_ref"]
 
-    # 風險觸發：兩斜率皆 < 門檻，且 ATR 抬頭超過倍率
-    b["risk_trigger"] = (b["slope_20d"] < slope20_thresh) & \
-                        (b["slope_60d"] < slope60_thresh) & \
-                        (b["atr_ratio"] > atr_ratio_mult)
+    # --- 觸發邏輯：增強法原版 = 兩斜率皆 < 門檻 AND ATR 比值 > 倍數 ---
+    atr_ok = (b["atr_ratio"] > atr_ratio_mult) if atr_cmp == "gt" else (b["atr_ratio"] >= atr_ratio_mult)
+    if use_slopes:
+        slp_ok = (b["slope_20d"] < slope20_thresh) & (b["slope_60d"] < slope60_thresh)
+    else:
+        slp_ok = True
+
+    b["risk_trigger"] = slp_ok & atr_ok
     return b[["slope_20d", "slope_60d", "atr", "atr_ratio", "risk_trigger"]]
 
 
@@ -1366,10 +1396,15 @@ def risk_valve_backtest(open_px: pd.Series,
                         slope60_thresh: float = 0.0,
                         atr_win: int = 20,
                         atr_ref_win: int = 60,
-                        atr_ratio_mult: float = 1.3) -> dict:
+                        atr_ratio_mult: float = 1.0,
+                        *,
+                        use_slopes: bool = True,
+                        slope_method: str = "polyfit",
+                        atr_cmp: str = "gt") -> dict:
     """回傳：原始與閥門版本的績效、右尾削減度、以及兩版 equity/ledger"""
     sig = compute_risk_valve_signals(benchmark_df, slope20_thresh, slope60_thresh,
-                                     atr_win, atr_ref_win, atr_ratio_mult)
+                                     atr_win, atr_ref_win, atr_ratio_mult,
+                                     use_slopes=use_slopes, slope_method=slope_method, atr_cmp=atr_cmp)
     w2 = apply_valve_to_weights(w, sig["risk_trigger"], mode, cap_level)
 
     # 原始版本

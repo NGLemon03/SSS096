@@ -21,10 +21,23 @@ from typing import Dict, List, Tuple, Optional
 import warnings
 import logging
 
-# 配置 logger - 使用新的顯式初始化
-from analysis.logging_config import init_logging
-init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREATE_LOGS=1
-logger = logging.getLogger("SSS.Core")
+# 配置 logger - 使用按需初始化
+from analysis.logging_config import get_logger, init_logging
+import os
+
+# 設定環境變數
+os.environ["SSS_CREATE_LOGS"] = "1"
+
+# 獲取日誌器（懶加載）
+logger = get_logger("SSS.Core")
+
+def _initialize_core_logging():
+    """初始化核心系統日誌"""
+    init_logging(enable_file=True)
+    logger.info("=== SSS Core 系統啟動 - 統一日誌系統 ===")
+    return logger
+
+# 日誌系統準備就緒（按需初始化）
 
 # 忽略 pandas 的 PerformanceWarning
 warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
@@ -119,7 +132,7 @@ def _coerce_trade_schema(df):
 
 # --- 專案結構與日誌設定 ---
 from analysis import config as cfg
-from analysis.logging_config import setup_logging
+from analysis.logging_config import init_logging
 import logging
 DATA_DIR = cfg.DATA_DIR
 LOG_DIR = cfg.LOG_DIR
@@ -195,8 +208,8 @@ param_presets = {
 }
 
 }
-setup_logging()  # 初始化統一日誌設定
-logger = logging.getLogger("SSSv096")  # 使用專屬 logger
+init_logging(enable_file=True)  # 初始化統一日誌設定
+logger = logging.getLogger("SSS.System")  # 使用系統 logger
 
 # --- 新增：Ensemble 策略提示「只提醒一次」機制 ---
 _ENSEMBLE_MOVED_WARNED = False

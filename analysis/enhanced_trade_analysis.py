@@ -15,6 +15,12 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# 導入統一的風險閥門訊號計算函數
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from SSS_EnsembleTab import compute_risk_valve_signals
+
 # 設定中文字體
 plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -144,49 +150,19 @@ class EnhancedTradeAnalyzer:
         benchmark['日期'] = pd.to_datetime(benchmark['日期'])
         benchmark = benchmark.sort_values('日期').reset_index(drop=True)
         
-        # 計算移動平均斜率
-        for period in [20, 60]:
-            benchmark[f'slope_{period}d'] = benchmark['收盤價'].rolling(period).apply(
-                lambda x: np.polyfit(range(len(x)), x, 1)[0] if len(x) == period else np.nan
-            )
-            
-        # 檢查是否有高低價，如果沒有則用收盤價近似
-        has_hl = {'最高價', '最低價'}.issubset(benchmark.columns)
-        if not has_hl:
-            # 用收盤價近似 TR：|Close - Close.shift(1)|
-            benchmark['最高價'] = benchmark['收盤價']
-            benchmark['最低價'] = benchmark['收盤價']
-            
-        # slope 計算保留，接著改成帶門檻的比較
-        t20 = risk_rules.get('twii_slope_20d', {}).get('threshold', 0)
-        t60 = risk_rules.get('twii_slope_60d', {}).get('threshold', 0)
-        
-        # 重新組合 TR / ATR（若無高低價，以 diff 近似）
-        if has_hl:
-            benchmark['high_low'] = benchmark['最高價'] - benchmark['最低價']
-            benchmark['high_close'] = (benchmark['最高價'] - benchmark['收盤價'].shift(1)).abs()
-            benchmark['low_close']  = (benchmark['最低價']  - benchmark['收盤價'].shift(1)).abs()
-            benchmark['tr'] = benchmark[['high_low','high_close','low_close']].max(axis=1)
-        else:
-            benchmark['tr'] = benchmark['收盤價'].diff().abs()
-            
-        atr_win = risk_rules.get('atr_threshold', {}).get('window', 20)
-        atr_mult = risk_rules.get('atr_threshold', {}).get('multiplier', 1.5)
-        
-        benchmark['atr'] = benchmark['tr'].rolling(atr_win).mean()
-        benchmark['atr_ratio'] = benchmark['atr'] / benchmark['atr'].rolling(60).mean()
-        
-        # 風險閥門觸發條件
-        benchmark['risk_valve_20d'] = benchmark['slope_20d'] < t20
-        benchmark['risk_valve_60d'] = benchmark['slope_60d'] < t60
-        benchmark['risk_valve_atr'] = benchmark['atr_ratio'] > atr_mult
-        
-        # 綜合風險閥門
-        benchmark['risk_valve_triggered'] = (
-            benchmark['risk_valve_20d'] & 
-            benchmark['risk_valve_60d'] & 
-            benchmark['risk_valve_atr']
+        # 使用統一的風險閥門訊號計算函數
+        sig = compute_risk_valve_signals(
+            benchmark,
+            slope20_thresh= risk_rules.get('twii_slope_20d', {}).get('threshold', 0.0),
+            slope60_thresh= risk_rules.get('twii_slope_60d', {}).get('threshold', 0.0),
+            atr_win=20, atr_ref_win=60,
+            atr_ratio_mult= risk_rules.get('atr_threshold', {}).get('multiplier', 1.0),
+            use_slopes=True,
+            slope_method="polyfit",
+            atr_cmp="gt"
         )
+        benchmark = benchmark.join(sig[["slope_20d","slope_60d","atr","atr_ratio","risk_trigger"]], how="left")
+        benchmark.rename(columns={"risk_trigger":"risk_valve_triggered"}, inplace=True)
         
         self.benchmark_enhanced = benchmark
         

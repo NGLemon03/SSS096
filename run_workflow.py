@@ -21,10 +21,9 @@ from pathlib import Path
 from datetime import datetime
 import yaml
 
-# 設置日誌
+# 設置日誌 - 按需初始化
 try:
-    from analysis.logging_config import setup_logging, get_logger
-    setup_logging()
+    from analysis.logging_config import get_logger
     logger = get_logger("workflow")
 except ImportError:
     # 後備方案：如果無法導入專案日誌配置，使用基本配置

@@ -3,10 +3,9 @@ import json
 import os
 import logging
 
-# 設置 logger
-from analysis.logging_config import init_logging
-init_logging()  # 預設只開 console；要落地檔案就設 SSS_CREATE_LOGS=1
-logger = logging.getLogger("SSS.ExtractParams")
+# 設置 logger - 按需初始化
+from analysis.logging_config import get_logger
+logger = get_logger("SSS.System")
 
 def extract_params_from_csv(csv_file, trial_numbers):
     """從CSV文件中提取指定trial_number的參數"""

@@ -17,21 +17,25 @@ import logging
 import numpy as np
 from urllib.parse import quote as urlparse
 
-# 配置 logger - 使用新的顯式初始化
-from analysis.logging_config import init_logging
+# 配置 logger - 使用統一日誌系統（按需初始化）
+from analysis.logging_config import get_logger, init_logging
 import os
 
-# 強制啟用檔案日誌，不依賴環境變數
+# 設定環境變數（但不立即初始化）
 os.environ["SSS_CREATE_LOGS"] = "1"
 
-# 直接呼叫 init_logging，它會使用正確的日誌目錄
-init_logging(enable_file=True)
-logger = logging.getLogger("SSS.App")
+# 獲取日誌器（懶加載）
+logger = get_logger("SSS.App")
 
-# 設定為 DEBUG 級別，詳細調試資訊會寫入日誌檔案
-logger.setLevel(logging.DEBUG)
-logger.info("已啟用詳細調試模式 - 調試資訊將寫入日誌檔案")
-logger.info(f"日誌目錄: {os.path.abspath('analysis/log')}")
+def _initialize_app_logging():
+    """初始化應用程式日誌系統"""
+    # 只在實際需要時才初始化檔案日誌
+    init_logging(enable_file=True)
+    logger.setLevel(logging.DEBUG)
+    logger.info("=== App Dash 啟動 - 統一日誌系統 ===")
+    logger.info("已啟用詳細調試模式 - 調試資訊將寫入日誌檔案")
+    logger.info(f"日誌目錄: {os.path.abspath('analysis/log')}")
+    return logger
 
 # ATR 計算函數
 def calculate_atr(df, window):
@@ -248,7 +252,9 @@ def _pack_result_for_store(result: dict) -> dict:
         'equity_curve', 'cash_curve', 'price_series',
         'daily_state', 'trade_ledger',
         'daily_state_std', 'trade_ledger_std',
-        'weight_curve'
+        'weight_curve',
+        # ➊ 新增：保存未套閥門 baseline
+        'daily_state_base', 'trade_ledger_base', 'weight_curve_base'
     ]
     out = dict(result)
     for k in keys:
@@ -922,6 +928,12 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                             benchmark_df=df_raw,
                             mode="cap",
                             cap_level=float(risk_cap),
+                            slope20_thresh=0.0, slope60_thresh=0.0,
+                            atr_win=20, atr_ref_win=60,
+                            atr_ratio_mult=float(ratio_local if ratio_local is not None else atr_ratio),   # 若你有 local ratio，就用 local；否則全局 atr_ratio
+                            use_slopes=True,
+                            slope_method="polyfit",
+                            atr_cmp="gt"
                         )
 
                         # 覆寫結果，確保 UI 與輸出一致（和 Ensemble 分支對齊）
@@ -1084,6 +1096,12 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         benchmark_df=bench,
                         mode="cap",
                         cap_level=float(risk_cap),
+                        slope20_thresh=0.0, slope60_thresh=0.0,
+                        atr_win=20, atr_ref_win=60,
+                        atr_ratio_mult=float(atr_ratio),   # ← UI 的 ATR 門檻
+                        use_slopes=True,                   # ← 跟增強分析一致
+                        slope_method="polyfit",            # ← 跟增強分析一致
+                        atr_cmp="gt"                       # ← 跟增強分析一致（用 >）
                     )
                     # 覆寫結果，確保 UI 與輸出一致
                     backtest_result.daily_state = rv["daily_state_valve"]
@@ -1103,6 +1121,9 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         "cap": float(risk_cap),
                         "atr_ratio": ratio
                     }
+                    
+                    # 新增：讓全局區段知道已套用過
+                    result['_risk_valve_applied'] = True
                 else:
                     if global_apply:
                         logger.info(f"[{strat}] 🟢 風險閥門未觸發，使用原始參數")
@@ -1204,23 +1225,38 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
         
         # === 全局風險閥門：逐日動態套用（與增強分析一致） ===
         if global_apply:
-            # 1) 取 ds（daily_state），並解包
-            ds_raw = result.get("daily_state_std") or result.get("daily_state")
-            ds = df_from_pack(ds_raw)
-            if ds is None or ds.empty or "w" not in ds.columns:
-                logger.warning(f"[{strat}] daily_state 不含 'w'，跳過全局風險閥門")
+            # 新增：若策略分支已經套用，就不要再來一次
+            if result.get('_risk_valve_applied'):
+                logger.info(f"[{strat}] 已由策略分支套用風險閥門，跳過全局再次套用")
             else:
-                # 2) 算逐日 ATR 比值與逐日 mask
-                atr20 = calculate_atr(df_raw, 20)
-                atr60 = calculate_atr(df_raw, 60)
-                if atr20 is None or atr60 is None:
-                    logger.warning(f"[{strat}] 無法計算 ATR20/60，跳過全局風險閥門")
+                # 原本區塊從這裡開始
+                # 1) 取 ds（daily_state），並解包
+                ds_raw = result.get("daily_state_std") or result.get("daily_state")
+                ds = df_from_pack(ds_raw)
+                if ds is None or ds.empty or "w" not in ds.columns:
+                    logger.warning(f"[{strat}] daily_state 不含 'w'，跳過全局風險閥門")
                 else:
-                    ratio = (atr20 / atr60).replace([np.inf, -np.inf], np.nan)
-                    mask = (ratio >= float(atr_ratio))
-                    if force_trigger:
-                        mask[:] = True  # 強制全部日子套 CAP
+                    # 2) 算逐日 ATR 比值與逐日 mask
+                    atr20 = calculate_atr(df_raw, 20)
+                    atr60 = calculate_atr(df_raw, 60)
+                    if atr20 is None or atr60 is None:
+                        logger.warning(f"[{strat}] 無法計算 ATR20/60，跳過全局風險閥門")
+                    else:
+                        ratio = (atr20 / atr60).replace([np.inf, -np.inf], np.nan)
+                        mask = (ratio >= float(atr_ratio))
+                        if force_trigger:
+                            mask[:] = True  # 強制全部日子套 CAP
 
+                    # 在全局壓 w 之前加：保存未套閥門的 baseline
+                    if "daily_state_base" not in result and ds_raw is not None:
+                        result["daily_state_base"] = ds_raw  # 保存未套閥門的 baseline
+                    
+                    # ➋ 追加以下兩行（放在同一段、覆寫 w 之前）
+                    if "trade_ledger_base" not in result and result.get("trade_ledger") is not None:
+                        result["trade_ledger_base"] = result["trade_ledger"]
+                    if "weight_curve_base" not in result and result.get("weight_curve") is not None:
+                        result["weight_curve_base"] = result["weight_curve"]
+                    
                     # 3) 對齊到 ds.index，逐日壓 w 至 CAP
                     mask_aligned = mask.reindex(ds.index).fillna(False).to_numpy()
                     w = ds["w"].astype(float).to_numpy()
@@ -1237,7 +1273,12 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
 
                     # 若你沿用現有的 risk_valve_backtest，給 cap_level=1.0 表示「w 已經是目標序列」
                     try:
-                        from SSS_EnsembleTab import risk_valve_backtest, CostParams
+                        from SSS_EnsembleTab import (
+                            risk_valve_backtest,
+                            CostParams,
+                            _mdd_from_daily_equity,
+                            _sell_returns_pct_from_ledger,
+                        )
                         
                         # 成本參數
                         trade_cost = (strat_params.get("trade_cost", {}) 
@@ -1267,7 +1308,11 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                             cost=cost,
                             benchmark_df=bench,
                             mode="cap",
-                            cap_level=1.0,
+                            cap_level=float(risk_cap),  # 使用實際的風險上限值，而不是 1.0
+                            slope20_thresh=None, slope60_thresh=None,
+                            atr_win=20, atr_ref_win=60,
+                            atr_ratio_mult=float(atr_ratio),   # 👈 與全局一致
+                            use_slopes=False                   # 👈 與 UI 預設一致
                         )
                     except Exception as e:
                         logger.warning(f"[{strat}] 無法導入 risk_valve_backtest: {e}")
@@ -1303,6 +1348,69 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                             if k in result:
                                 result.pop(k, None)
                         
+
+                        
+                        # 新增：標記 valve 狀態供後續快取判斷
+                        result['valve'] = {
+                            'applied': True,
+                            'cap': float(risk_cap),
+                            'atr_ratio_mult': float(atr_ratio),
+                        }
+                        
+                        # 新增：存入 ensemble 參數（若可取得）
+                        # 在全局風險閥門區塊中，我們沒有 cfg 物件，直接使用預設值
+                        result["ensemble_params"] = {"majority_k_pct": 0.55}  # 預設值
+
+                        # 2025-08-20 重算指標以保留績效資訊 #app_dash.py
+                        ledger_valve = result_cap.get('trade_ledger_valve', pd.DataFrame())
+                        ds_valve = result_cap.get('daily_state_valve', pd.DataFrame())
+                        if not ledger_valve.empty and not ds_valve.empty and 'equity' in ds_valve:
+                            r = _sell_returns_pct_from_ledger(ledger_valve)
+                            eq = ds_valve['equity']
+                            total_ret = eq.iloc[-1] / eq.iloc[0] - 1
+                            years = max((eq.index[-1] - eq.index[0]).days / 365.25, 1)
+                            ann_ret = (1 + total_ret) ** (1 / years) - 1
+                            mdd = _mdd_from_daily_equity(eq)
+                            dd = eq / eq.cummax() - 1
+                            blocks = (~(dd < 0)).cumsum()
+                            dd_dur = int((dd.groupby(blocks).cumcount() + 1).where(dd < 0).max() or 0)
+                            num_trades = len(r)
+                            win_rate = (r > 0).sum() / num_trades if num_trades > 0 else 0
+                            avg_win = r[r > 0].mean() if win_rate > 0 else np.nan
+                            avg_loss = r[r < 0].mean() if win_rate < 1 else np.nan
+                            payoff = abs(avg_win / avg_loss) if avg_loss != 0 and not np.isnan(avg_win) else np.nan
+                            daily_r = eq.pct_change().dropna()
+                            sharpe = (daily_r.mean() * np.sqrt(252)) / daily_r.std() if daily_r.std() != 0 else np.nan
+                            downside = daily_r[daily_r < 0]
+                            sortino = (daily_r.mean() * np.sqrt(252)) / downside.std() if downside.std() != 0 else np.nan
+                            ann_vol = daily_r.std() * np.sqrt(252) if len(daily_r) > 0 else np.nan
+                            prof = r[r > 0].sum()
+                            loss = abs(r[r < 0].sum())
+                            pf = prof / loss if loss != 0 else np.nan
+                            win_flag = r > 0
+                            grp = (win_flag != win_flag.shift()).cumsum()
+                            consec = win_flag.groupby(grp).cumcount() + 1
+                            max_wins = int(consec[win_flag].max() if True in win_flag.values else 0)
+                            max_losses = int(consec[~win_flag].max() if False in win_flag.values else 0)
+                            result['metrics'] = {
+                                'total_return': float(total_ret),
+                                'annual_return': float(ann_ret),
+                                'max_drawdown': float(mdd),
+                                'max_drawdown_duration': dd_dur,
+                                'calmar_ratio': float(ann_ret / abs(mdd)) if mdd < 0 else np.nan,
+                                'num_trades': int(num_trades),
+                                'win_rate': float(win_rate),
+                                'avg_win': float(avg_win) if not np.isnan(avg_win) else np.nan,
+                                'avg_loss': float(avg_loss) if not np.isnan(avg_loss) else np.nan,
+                                'payoff_ratio': float(payoff) if not np.isnan(payoff) else np.nan,
+                                'sharpe_ratio': float(sharpe) if not np.isnan(sharpe) else np.nan,
+                                'sortino_ratio': float(sortino) if not np.isnan(sortino) else np.nan,
+                                'max_consecutive_wins': max_wins,
+                                'max_consecutive_losses': max_losses,
+                                'annualized_volatility': float(ann_vol) if not np.isnan(ann_vol) else np.nan,
+                                'profit_factor': float(pf) if not np.isnan(pf) else np.nan,
+                            }
+                        
                         # 3) 給 UI 一個旗標與參數，便於顯示「已套用」
                         result['_risk_valve_applied'] = True
                         result['_risk_valve_params'] = {
@@ -1316,6 +1424,7 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         logger.info(f"[{strat}] 全局風險閥門已套用（逐日），風險天數={true_days}, CAP={risk_cap:.2f}")
                     else:
                         logger.warning(f"[{strat}] 風險閥門重算沒有返回結果")
+
         
         results[strat] = result
     
@@ -1873,7 +1982,7 @@ def update_tab(data, tab, selected_strategy, theme):
                 trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
             
             # 計算詳細統計信息
-            detailed_stats = calculate_holding_periods(trade_df)
+            detailed_stats = calculate_strategy_detailed_stats(trade_df, df_raw)
             
             metrics = result['metrics']
             comparison_data.append({
@@ -2428,7 +2537,8 @@ def _run_rv(n_clicks, mode, cap_level, atr_mult, cache):
             open_px=open_px, w=w, cost=cost, benchmark_df=bench,
             mode=mode, cap_level=float(cap_level),
             slope20_thresh=0.0, slope60_thresh=0.0,
-            atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult)
+            atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult),
+            use_slopes=True, slope_method="polyfit", atr_cmp="gt"
         )
     except Exception as e:
         return f"風險閥門回測執行失敗: {e}", no_update, no_update
@@ -3147,12 +3257,47 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
                 if "price" not in trade_data.columns:
                     trade_data["price"] = 0.0
     
-    # 準備 daily_state
+    # 準備 daily_state - 若已套用閥門則優先使用調整後資料
     daily_state = None
-    if result.get("daily_state_std"):
+    valve_info = result.get("valve", {})
+    valve_on = bool(valve_info.get("applied", False))
+    
+    # 先用閥門後的日線（若有）
+    if valve_on and result.get("daily_state"):
+        daily_state = df_from_pack(result["daily_state"])
+    elif result.get("daily_state_std"):
         daily_state = df_from_pack(result["daily_state_std"])
     elif result.get("daily_state"):
         daily_state = df_from_pack(result["daily_state"])
+    elif result.get("daily_state_base"):
+        daily_state = df_from_pack(result["daily_state_base"])
+    else:
+        daily_state = None
+    
+    # 準備 weight_curve 和閥門資訊
+    weight_curve = None
+    if result.get("weight_curve"):
+        weight_curve = df_from_pack(result["weight_curve"])
+    
+    # 獲取閥門狀態資訊
+    valve_info = result.get("valve", {})  # {"applied": bool, "cap": float, "atr_ratio": float or "N/A"}
+    valve_on = bool(valve_info.get("applied", False))
+    
+    # 若閥門生效，保證分析端覆寫 w_series
+    if valve_on and weight_curve is not None and daily_state is not None:
+        ds = daily_state.copy()
+        wc = weight_curve.copy()
+        # 對齊時間索引；若 ds 有 'trade_date' 欄就 merge，否則以索引對齊
+        if "trade_date" in ds.columns:
+            ds["trade_date"] = pd.to_datetime(ds["trade_date"])
+            wc = wc.rename("w").to_frame().reset_index().rename(columns={"index": "trade_date"})
+            ds = ds.merge(wc, on="trade_date", how="left")
+        else:
+            # 以索引對齊
+            ds.index = pd.to_datetime(ds.index)
+            wc.index = pd.to_datetime(wc.index)
+            ds["w"] = wc.reindex(ds.index).ffill().bfill()
+        daily_state = ds
     
     # 準備 df_raw
     df_raw = None
@@ -3162,14 +3307,22 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
         except Exception:
             df_raw = pd.DataFrame()
     
-    # 打包到 cache
+    # ---- pack valve flags into cache ----
     cache_data = {
         "strategy": selected_strategy,
         "trade_data": pack_df(trade_data) if trade_data is not None else None,
         "daily_state": pack_df(daily_state) if daily_state is not None else None,
+        "weight_curve": pack_df(weight_curve) if weight_curve is not None else None,
         "df_raw": pack_df(df_raw) if df_raw is not None else None,
+        "valve": valve_info,
+        "valve_applied": valve_on,
+        "ensemble_params": result.get("ensemble_params", {}),
         "data_source": data_source,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        # ➌ 新增：baseline 版本一併放進快取
+        "daily_state_base": result.get("daily_state_base"),
+        "weight_curve_base": result.get("weight_curve_base"),
+        "trade_ledger_base": result.get("trade_ledger_base"),
     }
     
     status_msg = f"✅ 已載入 {selected_strategy} ({data_source})"
@@ -3279,12 +3432,40 @@ def _auto_cache_best_strategy(bstore, current_selection):
                 if "price" not in trade_data.columns:
                     trade_data["price"] = 0.0
     
-    # 準備 daily_state
+    # ---- choose daily_state consistently ----
+    valve_info = best_result.get("valve", {}) or {}
+    valve_on = bool(valve_info.get("applied", False))
+    
     daily_state = None
-    if best_result.get("daily_state_std"):
+    if valve_on and best_result.get("daily_state"):                 # adjusted first if valve is on
+        daily_state = df_from_pack(best_result["daily_state"])
+    elif best_result.get("daily_state_std"):
         daily_state = df_from_pack(best_result["daily_state_std"])
     elif best_result.get("daily_state"):
         daily_state = df_from_pack(best_result["daily_state"])
+    elif best_result.get("daily_state_base"):
+        daily_state = df_from_pack(best_result["daily_state_base"])
+    
+    # 準備 weight_curve 和閥門資訊
+    weight_curve = None
+    if best_result.get("weight_curve"):
+        weight_curve = df_from_pack(best_result["weight_curve"])
+    
+    # 若閥門生效，保證分析端覆寫 w_series
+    if valve_on and weight_curve is not None and daily_state is not None:
+        ds = daily_state.copy()
+        wc = weight_curve.copy()
+        # 對齊時間索引；若 ds 有 'trade_date' 欄就 merge，否則以索引對齊
+        if "trade_date" in ds.columns:
+            ds["trade_date"] = pd.to_datetime(ds["trade_date"])
+            wc = wc.rename("w").to_frame().reset_index().rename(columns={"index": "trade_date"})
+            ds = ds.merge(wc, on="trade_date", how="left")
+        else:
+            # 以索引對齊
+            ds.index = pd.to_datetime(ds.index)
+            wc.index = pd.to_datetime(wc.index)
+            ds["w"] = wc.reindex(ds.index).ffill().bfill()
+        daily_state = ds
     
     # 準備 df_raw
     df_raw = None
@@ -3294,15 +3475,23 @@ def _auto_cache_best_strategy(bstore, current_selection):
         except Exception:
             df_raw = pd.DataFrame()
     
-    # 打包到 cache
+    # ---- pack valve flags into cache ----
     cache_data = {
         "strategy": best_strategy,
         "trade_data": pack_df(trade_data) if trade_data is not None else None,
         "daily_state": pack_df(daily_state) if daily_state is not None else None,
+        "weight_curve": pack_df(weight_curve) if weight_curve is not None else None,
         "df_raw": pack_df(df_raw) if df_raw is not None else None,
+        "valve": valve_info,
+        "valve_applied": valve_on,
+        "ensemble_params": best_result.get("ensemble_params", {}),
         "data_source": data_source,
         "timestamp": datetime.now().isoformat(),
-        "auto_cached": True
+        "auto_cached": True,
+        # ➌ 新增：baseline 版本一併放進快取
+        "daily_state_base": best_result.get("daily_state_base"),
+        "weight_curve_base": best_result.get("weight_curve_base"),
+        "trade_ledger_base": best_result.get("trade_ledger_base"),
     }
     
     status_msg = f"🔄 自動快取最佳策略：{best_strategy} ({data_source})"
@@ -3321,9 +3510,11 @@ def _auto_cache_best_strategy(bstore, current_selection):
     State("enhanced-trades-cache", "data"),
     State("backtest-store", "data"),
     State("rv-mode", "value"),
+    State("risk-cap-input", "value"),
+    State("atr-ratio-threshold", "value"),
     prevent_initial_call=True
 )
-def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
+def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode, risk_cap_value, atr_ratio_value):
     """生成風險-報酬地圖（Pareto Map）：掃描 cap 與 ATR(20)/ATR(60) 比值全組合"""
     logger.info(f"=== Pareto Map 生成開始 ===")
     logger.info(f"n_clicks: {n_clicks}")
@@ -3379,6 +3570,11 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
         logger.error("daily_state 為空")
         return go.Figure(), "❌ 找不到 daily_state（每日資產/權重）"
     
+    # 資料不足時的行為對齊
+    if len(daily_state) < 60:
+        logger.warning("資料不足（<60天），已略過掃描")
+        return go.Figure(), "⚠️ 資料不足（<60天），已略過掃描"
+    
     logger.info(f"df_raw 欄位: {list(df_raw.columns)}")
     logger.info(f"daily_state 欄位: {list(daily_state.columns)}")
 
@@ -3397,9 +3593,30 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
     # 準備輸入序列
     open_px = pd.to_numeric(df_raw[c_open], errors="coerce").dropna()
     open_px.index = pd.to_datetime(df_raw.index)
-    if "w" not in daily_state.columns:
-        return go.Figure(), "❌ daily_state 缺少權重欄位 'w'"
-    w = daily_state["w"].astype(float).reindex(open_px.index).ffill().fillna(0.0)
+    
+    # 取 open_px 後，準備 w（baseline 優先）
+    ds_base = df_from_pack(cache.get("daily_state_base")) if cache else None
+    wc_base = series_from_pack(cache.get("weight_curve_base")) if cache else None
+    
+    # 從 backtest-store 來的情況
+    if ds_base is None and (not cache) and backtest_data and "results" in backtest_data:
+        ds_base = df_from_pack(result.get("daily_state_base"))
+        # 注意：weight_curve_base 也可能存在於 result
+        try:
+            wc_base = series_from_pack(result.get("weight_curve_base"))
+        except Exception:
+            wc_base = None
+    
+    # 以 baseline w 為優先；沒有再退回現行 daily_state['w']
+    if ds_base is not None and (not ds_base.empty) and ("w" in ds_base.columns):
+        w = pd.to_numeric(ds_base["w"], errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+    elif wc_base is not None and (not wc_base.empty):
+        w = pd.to_numeric(wc_base, errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+    else:
+        # 後備：沿用現行 daily_state（可能已被閥門壓過）
+        if "w" not in daily_state.columns:
+            return go.Figure(), "❌ daily_state 缺少權重欄位 'w'"
+        w = pd.to_numeric(daily_state["w"], errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
 
     bench = pd.DataFrame({
         "收盤價": pd.to_numeric(df_raw[c_close], errors="coerce"),
@@ -3408,11 +3625,32 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
         bench["最高價"] = pd.to_numeric(df_raw[c_high], errors="coerce")
         bench["最低價"] = pd.to_numeric(df_raw[c_low], errors="coerce")
 
-    # 掃描參數格點
+    # ATR 樣本檢查（與狀態面板一致）
+    logger.info("=== ATR 樣本檢查 ===")
+    a20, a60 = calculate_atr(df_raw, 20), calculate_atr(df_raw, 60)
+    if a20 is None or a60 is None or a20.dropna().size < 60 or a60.dropna().size < 60:
+        logger.warning("ATR 樣本不足，回傳警示")
+        return go.Figure(), "🟡 ATR 樣本不足（請拉長期間或改用更長資料）"
+    
+    # 掃描參數格點 - 把全局門檻置入格點
     logger.info("=== 開始掃描參數格點 ===")
     import numpy as np
-    caps = np.round(np.arange(0.10, 1.00 + 1e-9, 0.05), 2)
-    atr_mults = np.round(np.arange(1.00, 2.00 + 1e-9, 0.05), 2)
+    
+    # 讀取當前設定
+    cap_now = float(risk_cap_value) if risk_cap_value else 0.8
+    atr_now = float(atr_ratio_value) if atr_ratio_value else 1.2
+    
+    # 基本格點
+    caps = np.round(np.linspace(0.10, 1.00, 19), 2)
+    atr_mults = np.round(np.linspace(1.00, 2.00, 21), 2)
+    
+    # 將全局設定植入格點（避免被內插忽略）
+    if risk_cap_value is not None:
+        caps = np.unique(np.r_[caps, float(risk_cap_value)])
+    if atr_ratio_value is not None:
+        atr_mults = np.unique(np.r_[atr_mults, float(atr_ratio_value)])
+    
+    logger.info(f"當前設定: cap={cap_now:.2f}, atr={atr_now:.2f}")
     logger.info(f"cap 範圍: {len(caps)} 個值，從 {caps[0]} 到 {caps[-1]}")
     logger.info(f"ATR 比值範圍: {len(atr_mults)} 個值，從 {atr_mults[0]} 到 {atr_mults[-1]}")
     logger.info(f"總組合數: {len(caps) * len(atr_mults)}")
@@ -3441,7 +3679,8 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
                     open_px=open_px, w=w, cost=None, benchmark_df=bench,
                     mode=(rv_mode or "cap"), cap_level=float(cap_level),
                     slope20_thresh=0.0, slope60_thresh=0.0,
-                    atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult)
+                    atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult),
+                    use_slopes=True, slope_method="polyfit", atr_cmp="gt"
                 )
                 
                 if not isinstance(out, dict) or "metrics" not in out:
@@ -3524,6 +3763,59 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
         customdata=dfp[["right_tail_sum_valve","right_tail_sum_orig"]].values,
         name="cap-atr grid"
     ))
+    
+    # 加入「Current」標記點（當前全局設定）
+    if cap_now in caps and atr_now in atr_mults:
+        # 找到當前設定對應的點位
+        current_point = dfp[(dfp['cap'] == cap_now) & (dfp['atr'] == atr_now)]
+        if not current_point.empty:
+            fig.add_trace(go.Scatter(
+                x=current_point['max_drawdown'],
+                y=current_point['pf'],
+                mode='markers',
+                marker=dict(
+                    size=20,
+                    symbol='star',
+                    color='gold',
+                    line=dict(color='black', width=2)
+                ),
+                text=f"Current: cap={cap_now:.2f}, atr={atr_now:.2f}",
+                hovertemplate=(
+                    "<b>%{text}</b><br>" +
+                    "MDD: %{x:.2%}<br>" +
+                    "PF: %{y:.2f}<br>" +
+                    "<extra></extra>"
+                ),
+                name="Current Settings"
+            ))
+    
+    # 加入「Global」標記點（全局門檻設定）
+    if risk_cap_value is not None and atr_ratio_value is not None:
+        # 嘗試找到對應的掃描結果點位
+        global_cap = float(risk_cap_value)
+        global_atr = float(atr_ratio_value)
+        global_point = dfp[(dfp['cap'] == global_cap) & (dfp['atr'] == global_atr)]
+        
+        if not global_point.empty:
+            fig.add_trace(go.Scatter(
+                x=global_point['max_drawdown'],
+                y=global_point['pf'],
+                mode='markers',
+                marker=dict(
+                    size=25,
+                    symbol='diamond',
+                    color='blue',
+                    line=dict(color='white', width=2)
+                ),
+                text=f"Global: cap={global_cap:.2f}, atr={global_atr:.2f}",
+                hovertemplate=(
+                    "<b>%{text}</b><br>" +
+                    "MDD: %{x:.2%}<br>" +
+                    "PF: %{y:.2f}<br>" +
+                    "<extra></extra>"
+                ),
+                name="Global Setting"
+            ))
 
     fig.update_layout(
         title={
@@ -3541,7 +3833,7 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode):
         margin=dict(r=120)
     )
 
-    status_msg = f"✅ 成功生成：掃描 cap×ATR 比值 {succeeded}/{tried} 組。顏色=右尾調整幅度（紅=削減，藍=放大），大小=風險觸發天數。資料來源：{data_source}"
+    status_msg = f"✅ 成功生成：掃描 cap×ATR 比值 {succeeded}/{tried} 組。顏色=右尾調整幅度（紅=削減，藍=放大），大小=風險觸發天數。目前全局設定：cap={cap_now:.2f}, atr={atr_now:.2f}。資料來源：{data_source}"
     return fig, status_msg
 
 def calculate_pareto_metrics(equity_curve, trade_df):
@@ -3810,10 +4102,30 @@ def download_pareto_csv(n_clicks, cache, backtest_data, rv_mode):
         # 準備輸入序列
         open_px = pd.to_numeric(df_raw[c_open], errors="coerce").dropna()
         open_px.index = pd.to_datetime(df_raw.index)
-        if "w" not in daily_state.columns:
-            return None
         
-        w = daily_state["w"].astype(float).reindex(open_px.index).ffill().fillna(0.0)
+        # 取 open_px 後，準備 w（baseline 優先）
+        ds_base = df_from_pack(cache.get("daily_state_base")) if cache else None
+        wc_base = series_from_pack(cache.get("weight_curve_base")) if cache else None
+        
+        # 從 backtest-store 來的情況
+        if ds_base is None and (not cache) and backtest_data and "results" in backtest_data:
+            ds_base = df_from_pack(result.get("daily_state_base"))
+            # 注意：weight_curve_base 也可能存在於 result
+            try:
+                wc_base = series_from_pack(result.get("weight_curve_base"))
+            except Exception:
+                wc_base = None
+        
+        # 以 baseline w 為優先；沒有再退回現行 daily_state['w']
+        if ds_base is not None and (not ds_base.empty) and ("w" in ds_base.columns):
+            w = pd.to_numeric(ds_base["w"], errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+        elif wc_base is not None and (not wc_base.empty):
+            w = pd.to_numeric(wc_base, errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+        else:
+            # 後備：沿用現行 daily_state（可能已被閥門壓過）
+            if "w" not in daily_state.columns:
+                return None
+            w = pd.to_numeric(daily_state["w"], errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
         
         bench = pd.DataFrame({
             "收盤價": pd.to_numeric(df_raw[c_close], errors="coerce"),
@@ -3854,7 +4166,8 @@ def download_pareto_csv(n_clicks, cache, backtest_data, rv_mode):
                         open_px=open_px, w=w, cost=None, benchmark_df=bench,
                         mode=(rv_mode or "cap"), cap_level=float(cap_level),
                         slope20_thresh=0.0, slope60_thresh=0.0,
-                        atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult)
+                        atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult),
+                        use_slopes=True, slope_method="polyfit", atr_cmp="gt"
                     )
                     
                     if out and "metrics" in out:
@@ -3945,6 +4258,9 @@ def _update_top_worst(src, store):
     return top3[ordered].to_dict("records"), worst3[ordered].to_dict("records")
 
 if __name__ == '__main__':
+    # 初始化日誌系統（只在實際運行 app 時）
+    _initialize_app_logging()
+    
     # 在主線程中執行啟動任務
     safe_startup()
     
