@@ -1,0 +1,480 @@
+2025-08-20 12:41:18 INFO [SSS.App:35] === App Dash 啟動 - 統一日誌系統 ===
+2025-08-20 12:41:18 INFO [SSS.App:36] 已啟用詳細調試模式 - 調試資訊將寫入日誌檔案
+2025-08-20 12:41:18 INFO [SSS.App:37] 日誌目錄: C:\Stock_reserach\SSS096\analysis\log
+2025-08-20 12:41:19 INFO [SSS.App:592] === 風險閥門狀態更新 ===
+2025-08-20 12:41:19 INFO [SSS.App:593] global_apply: False
+2025-08-20 12:41:19 INFO [SSS.App:594] risk_cap: 0.3
+2025-08-20 12:41:19 DEBUG [SSS.App:777] run_backtest 被調用 - n_clicks: 0, auto_run: True, trigger: None
+2025-08-20 12:41:19 INFO [SSS.App:595] atr_ratio: 1
+2025-08-20 12:41:19 INFO [SSS.App:596] force_trigger: False
+2025-08-20 12:41:19 INFO [SSS.App:597] ticker: 00631L.TW
+2025-08-20 12:41:19 INFO [SSS.App:598] start_date: 2010-01-01
+2025-08-20 12:41:19 INFO [SSS.App:599] end_date: 
+2025-08-20 12:41:19 INFO [SSS.App:602] 風險閥門未啟用
+2025-08-20 12:41:19 INFO [SSS.App:798] 開始執行回測 - ticker: 00631L.TW, 策略數: 13
+2025-08-20 12:41:19 INFO [SSS.App:815] [Single 2] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:19 INFO [SSS.App:860] [Single 2] 未啟用全局風險閥門
+2025-08-20 12:41:19 DEBUG [SSS.App:777] run_backtest 被調用 - n_clicks: 0, auto_run: True, trigger: {'param': 'linlen', 'type': 'param-input'}
+2025-08-20 12:41:19 INFO [SSS.App:798] 開始執行回測 - ticker: 00631L.TW, 策略數: 13
+2025-08-20 12:41:19 INFO [SSS.App:815] [Single 2] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:19 INFO [SSS.App:860] [Single 2] 未啟用全局風險閥門
+2025-08-20 12:41:19 INFO [SSS.App:815] [single_1887] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:19 INFO [SSS.App:860] [single_1887] 未啟用全局風險閥門
+2025-08-20 12:41:20 INFO [SSS.App:815] [single_1887] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:20 INFO [SSS.App:860] [single_1887] 未啟用全局風險閥門
+2025-08-20 12:41:20 INFO [SSS.App:815] [Single 3] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:20 INFO [SSS.App:860] [Single 3] 未啟用全局風險閥門
+2025-08-20 12:41:21 INFO [SSS.App:815] [Single 3] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:21 INFO [SSS.App:860] [Single 3] 未啟用全局風險閥門
+2025-08-20 12:41:21 INFO [SSS.App:815] [RMA_69] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:21 INFO [SSS.App:860] [RMA_69] 未啟用全局風險閥門
+2025-08-20 12:41:21 INFO [SSS.App:815] [RMA_69] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:21 INFO [SSS.App:860] [RMA_69] 未啟用全局風險閥門
+2025-08-20 12:41:22 INFO [SSS.App:815] [RMA_669] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:22 INFO [SSS.App:860] [RMA_669] 未啟用全局風險閥門
+2025-08-20 12:41:22 INFO [SSS.App:815] [RMA_669] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:22 INFO [SSS.App:860] [RMA_669] 未啟用全局風險閥門
+2025-08-20 12:41:23 INFO [SSS.App:815] [STM0] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:23 INFO [SSS.App:860] [STM0] 未啟用全局風險閥門
+2025-08-20 12:41:23 INFO [SSS.App:815] [STM0] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:23 INFO [SSS.App:860] [STM0] 未啟用全局風險閥門
+2025-08-20 12:41:23 INFO [SSS.App:815] [STM1] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:23 INFO [SSS.App:860] [STM1] 未啟用全局風險閥門
+2025-08-20 12:41:23 INFO [SSS.App:815] [STM1] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:23 INFO [SSS.App:860] [STM1] 未啟用全局風險閥門
+2025-08-20 12:41:24 INFO [SSS.App:815] [STM3] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:24 INFO [SSS.App:860] [STM3] 未啟用全局風險閥門
+2025-08-20 12:41:24 INFO [SSS.App:815] [STM3] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:24 INFO [SSS.App:860] [STM3] 未啟用全局風險閥門
+2025-08-20 12:41:25 INFO [SSS.App:815] [STM4] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:25 INFO [SSS.App:860] [STM4] 未啟用全局風險閥門
+2025-08-20 12:41:25 INFO [SSS.App:815] [STM4] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:25 INFO [SSS.App:860] [STM4] 未啟用全局風險閥門
+2025-08-20 12:41:25 INFO [SSS.App:815] [STM_1939] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:25 INFO [SSS.App:860] [STM_1939] 未啟用全局風險閥門
+2025-08-20 12:41:25 INFO [SSS.App:815] [STM_1939] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:25 INFO [SSS.App:860] [STM_1939] 未啟用全局風險閥門
+2025-08-20 12:41:26 INFO [SSS.App:815] [STM_2414_273] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:26 INFO [SSS.App:860] [STM_2414_273] 未啟用全局風險閥門
+2025-08-20 12:41:26 INFO [SSS.App:815] [STM_2414_273] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:26 INFO [SSS.App:860] [STM_2414_273] 未啟用全局風險閥門
+2025-08-20 12:41:26 INFO [SSS.App:815] [Ensemble_Majority] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:26 INFO [SSS.App:860] [Ensemble_Majority] 未啟用全局風險閥門
+2025-08-20 12:41:26 INFO [SSS.App:1020] [Ensemble] 強制設定 majority_k_pct=0.55
+2025-08-20 12:41:26 INFO [SSS.App:1022] [Ensemble] 執行配置: ticker=00631L.TW, method=majority, majority_k_pct=N/A
+2025-08-20 12:41:26 INFO [SSS.App:815] [Ensemble_Majority] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:26 INFO [SSS.App:860] [Ensemble_Majority] 未啟用全局風險閥門
+2025-08-20 12:41:26 INFO [SSS.App:1020] [Ensemble] 強制設定 majority_k_pct=0.55
+2025-08-20 12:41:26 INFO [SSS.App:1022] [Ensemble] 執行配置: ticker=00631L.TW, method=majority, majority_k_pct=N/A
+2025-08-20 12:41:26 INFO [SSS.App:1032] [Ensemble_Majority] Ensemble ATR 計算: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:26 INFO [SSS.App:1032] [Ensemble_Majority] Ensemble ATR 計算: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:26 INFO [SSS.App:1038] [Ensemble_Majority] Ensemble ATR 有效值: atr_20=2621, atr_60=2581
+2025-08-20 12:41:26 INFO [SSS.App:1044] [Ensemble_Majority] Ensemble ATR 最新值: a20=5.250001, a60=5.213334
+2025-08-20 12:41:26 INFO [SSS.App:1038] [Ensemble_Majority] Ensemble ATR 有效值: atr_20=2621, atr_60=2581
+2025-08-20 12:41:26 INFO [SSS.App:1049] [Ensemble_Majority] Ensemble ATR 比值: 1.0070 (門檻=1) -> 觸發=True
+2025-08-20 12:41:26 INFO [SSS.App:1044] [Ensemble_Majority] Ensemble ATR 最新值: a20=5.250001, a60=5.213334
+2025-08-20 12:41:26 INFO [SSS.App:1053] [Ensemble_Majority] 🔴 風險閥門觸發！ATR比值(1.0070) > 門檻(1)
+2025-08-20 12:41:26 INFO [SSS.App:1049] [Ensemble_Majority] Ensemble ATR 比值: 1.0070 (門檻=1) -> 觸發=True
+2025-08-20 12:41:26 INFO [SSS.App:1053] [Ensemble_Majority] 🔴 風險閥門觸發！ATR比值(1.0070) > 門檻(1)
+2025-08-20 12:41:27 INFO [SSS.App:592] === 風險閥門狀態更新 ===
+2025-08-20 12:41:27 DEBUG [SSS.App:777] run_backtest 被調用 - n_clicks: 0, auto_run: True, trigger: global-apply-switch
+2025-08-20 12:41:27 INFO [SSS.App:593] global_apply: True
+2025-08-20 12:41:27 INFO [SSS.App:594] risk_cap: 0.3
+2025-08-20 12:41:27 INFO [SSS.App:595] atr_ratio: 1
+2025-08-20 12:41:27 INFO [SSS.App:596] force_trigger: False
+2025-08-20 12:41:27 INFO [SSS.App:597] ticker: 00631L.TW
+2025-08-20 12:41:27 INFO [SSS.App:598] start_date: 2010-01-01
+2025-08-20 12:41:27 INFO [SSS.App:599] end_date: 
+2025-08-20 12:41:27 INFO [SSS.App:612] 開始載入數據: ticker=00631L.TW, start_date=2010-01-01, end_date=
+2025-08-20 12:41:27 INFO [SSS.App:798] 開始執行回測 - ticker: 00631L.TW, 策略數: 13
+2025-08-20 12:41:27 INFO [SSS.App:614] 數據載入結果: 空=False, 形狀=(2640, 5)
+2025-08-20 12:41:27 INFO [SSS.App:618] 開始計算 ATR 比值
+2025-08-20 12:41:27 INFO [SSS.App:815] [Single 2] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:27 INFO [SSS.App:817] [Single 2] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:27 INFO [SSS.App:621] ATR 計算完成: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:27 INFO [SSS.App:848] [Single 2] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:27 INFO [SSS.App:668] ATR 比值計算: 5.250001 / 5.213334 = 1.0070
+2025-08-20 12:41:27 INFO [SSS.App:669] 風險閥門門檻: 1, 當前比值: 1.0070
+2025-08-20 12:41:27 INFO [SSS.App:670] 風險閥門觸發: 是
+2025-08-20 12:41:27 INFO [SSS.App:671] 風險閥門狀態: 🔴 觸發
+2025-08-20 12:41:28 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=164 rows, new_ds=2464 rows
+2025-08-20 12:41:28 INFO [SSS.App:1389] [Single 2] 全局風險閥門已套用（逐日），風險天數=1253, CAP=0.30
+2025-08-20 12:41:28 INFO [SSS.App:815] [single_1887] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:28 INFO [SSS.App:817] [single_1887] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:28 INFO [SSS.App:848] [single_1887] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:29 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=164 rows, new_ds=2464 rows
+2025-08-20 12:41:29 INFO [SSS.App:1389] [single_1887] 全局風險閥門已套用（逐日），風險天數=1253, CAP=0.30
+2025-08-20 12:41:29 INFO [SSS.App:815] [Single 3] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:29 INFO [SSS.App:817] [Single 3] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:29 INFO [SSS.App:848] [Single 3] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:30 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=132 rows, new_ds=2464 rows
+2025-08-20 12:41:30 INFO [SSS.App:1389] [Single 3] 全局風險閥門已套用（逐日），風險天數=1253, CAP=0.30
+2025-08-20 12:41:30 INFO [SSS.App:815] [RMA_69] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:30 INFO [SSS.App:817] [RMA_69] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:30 INFO [SSS.App:848] [RMA_69] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:31 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=116 rows, new_ds=2265 rows
+2025-08-20 12:41:31 INFO [SSS.App:1389] [RMA_69] 全局風險閥門已套用（逐日），風險天數=1144, CAP=0.30
+2025-08-20 12:41:31 INFO [SSS.App:815] [RMA_669] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:31 INFO [SSS.App:817] [RMA_669] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:31 INFO [SSS.App:848] [RMA_669] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:32 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=109 rows, new_ds=2258 rows
+2025-08-20 12:41:32 INFO [SSS.App:1389] [RMA_669] 全局風險閥門已套用（逐日），風險天數=1137, CAP=0.30
+2025-08-20 12:41:32 INFO [SSS.App:815] [STM0] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:32 INFO [SSS.App:817] [STM0] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:32 INFO [SSS.App:848] [STM0] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:33 INFO [SSS.App:945] [STM0] SSMA 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:34 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=157 rows, new_ds=2640 rows
+2025-08-20 12:41:34 INFO [SSS.App:1389] [STM0] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:34 INFO [SSS.App:815] [STM1] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:34 INFO [SSS.App:817] [STM1] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:34 INFO [SSS.App:848] [STM1] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:35 INFO [SSS.App:945] [STM1] SSMA 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:36 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=150 rows, new_ds=2640 rows
+2025-08-20 12:41:36 INFO [SSS.App:1389] [STM1] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:36 INFO [SSS.App:815] [STM3] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:36 INFO [SSS.App:817] [STM3] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:36 INFO [SSS.App:848] [STM3] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:37 INFO [SSS.App:945] [STM3] SSMA 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:37 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=155 rows, new_ds=2640 rows
+2025-08-20 12:41:37 INFO [SSS.App:1389] [STM3] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:37 INFO [SSS.App:815] [STM4] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:37 INFO [SSS.App:817] [STM4] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:37 INFO [SSS.App:848] [STM4] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:38 INFO [SSS.App:945] [STM4] SSMA 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:39 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=131 rows, new_ds=2640 rows
+2025-08-20 12:41:39 INFO [SSS.App:1389] [STM4] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:39 INFO [SSS.App:815] [STM_1939] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:39 INFO [SSS.App:817] [STM_1939] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:39 INFO [SSS.App:848] [STM_1939] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:40 INFO [SSS.App:945] [STM_1939] SSMA 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:41 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=154 rows, new_ds=2640 rows
+2025-08-20 12:41:41 INFO [SSS.App:1389] [STM_1939] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:41 INFO [SSS.App:815] [STM_2414_273] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:41 INFO [SSS.App:817] [STM_2414_273] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:41 INFO [SSS.App:848] [STM_2414_273] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:42 INFO [SSS.App:945] [STM_2414_273] SSMA 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:43 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=136 rows, new_ds=2640 rows
+2025-08-20 12:41:43 INFO [SSS.App:1389] [STM_2414_273] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:43 INFO [SSS.App:815] [Ensemble_Majority] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:43 INFO [SSS.App:817] [Ensemble_Majority] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:43 INFO [SSS.App:848] [Ensemble_Majority] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:43 INFO [SSS.App:1020] [Ensemble] 強制設定 majority_k_pct=0.55
+2025-08-20 12:41:43 INFO [SSS.App:1022] [Ensemble] 執行配置: ticker=00631L.TW, method=majority, majority_k_pct=N/A
+2025-08-20 12:41:43 INFO [SSS.App:1032] [Ensemble_Majority] Ensemble ATR 計算: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:43 INFO [SSS.App:1038] [Ensemble_Majority] Ensemble ATR 有效值: atr_20=2621, atr_60=2581
+2025-08-20 12:41:43 INFO [SSS.App:1044] [Ensemble_Majority] Ensemble ATR 最新值: a20=5.250001, a60=5.213334
+2025-08-20 12:41:43 INFO [SSS.App:1049] [Ensemble_Majority] Ensemble ATR 比值: 1.0070 (門檻=1) -> 觸發=True
+2025-08-20 12:41:43 INFO [SSS.App:1053] [Ensemble_Majority] 🔴 風險閥門觸發！ATR比值(1.0070) > 門檻(1)
+2025-08-20 12:41:44 INFO [SSS.App:1123] [Ensemble_Majority] ⚪ 全局風險閥門未啟用
+2025-08-20 12:41:44 INFO [SSS.App:1148] [Ensemble] 執行成功: 權益曲線長度=2640, 交易數=216
+2025-08-20 12:41:44 INFO [SSS.App:1163] [Ensemble] 執行完成，ticker=00631L.TW, method=majority
+2025-08-20 12:41:44 INFO [SSS.App:815] [Ensemble_Proportional] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:44 INFO [SSS.App:860] [Ensemble_Proportional] 未啟用全局風險閥門
+2025-08-20 12:41:44 INFO [SSS.App:1020] [Ensemble] 強制設定 majority_k_pct=0.55
+2025-08-20 12:41:44 INFO [SSS.App:1022] [Ensemble] 執行配置: ticker=00631L.TW, method=proportional, majority_k_pct=N/A
+2025-08-20 12:41:44 INFO [SSS.App:1123] [Ensemble_Majority] ⚪ 全局風險閥門未啟用
+2025-08-20 12:41:44 INFO [SSS.App:1148] [Ensemble] 執行成功: 權益曲線長度=2640, 交易數=216
+2025-08-20 12:41:44 INFO [SSS.App:1032] [Ensemble_Proportional] Ensemble ATR 計算: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:44 INFO [SSS.App:1163] [Ensemble] 執行完成，ticker=00631L.TW, method=majority
+2025-08-20 12:41:44 INFO [SSS.App:1038] [Ensemble_Proportional] Ensemble ATR 有效值: atr_20=2621, atr_60=2581
+2025-08-20 12:41:44 INFO [SSS.App:1044] [Ensemble_Proportional] Ensemble ATR 最新值: a20=5.250001, a60=5.213334
+2025-08-20 12:41:44 INFO [SSS.App:1049] [Ensemble_Proportional] Ensemble ATR 比值: 1.0070 (門檻=1) -> 觸發=True
+2025-08-20 12:41:44 INFO [SSS.App:1053] [Ensemble_Proportional] 🔴 風險閥門觸發！ATR比值(1.0070) > 門檻(1)
+2025-08-20 12:41:44 INFO [SSS.App:815] [Ensemble_Proportional] 風險閥門開關狀態: global_apply=False, 類型=<class 'bool'>
+2025-08-20 12:41:44 INFO [SSS.App:860] [Ensemble_Proportional] 未啟用全局風險閥門
+2025-08-20 12:41:44 INFO [SSS.App:1020] [Ensemble] 強制設定 majority_k_pct=0.55
+2025-08-20 12:41:44 INFO [SSS.App:1022] [Ensemble] 執行配置: ticker=00631L.TW, method=proportional, majority_k_pct=N/A
+2025-08-20 12:41:44 INFO [SSS.App:1032] [Ensemble_Proportional] Ensemble ATR 計算: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:44 INFO [SSS.App:1038] [Ensemble_Proportional] Ensemble ATR 有效值: atr_20=2621, atr_60=2581
+2025-08-20 12:41:44 INFO [SSS.App:1044] [Ensemble_Proportional] Ensemble ATR 最新值: a20=5.250001, a60=5.213334
+2025-08-20 12:41:44 INFO [SSS.App:1049] [Ensemble_Proportional] Ensemble ATR 比值: 1.0070 (門檻=1) -> 觸發=True
+2025-08-20 12:41:44 INFO [SSS.App:1053] [Ensemble_Proportional] 🔴 風險閥門觸發！ATR比值(1.0070) > 門檻(1)
+2025-08-20 12:41:48 INFO [SSS.App:1082] [Ensemble_Majority] 🔴 開始套用風險閥門: cap=0.3, ratio=1.0070
+2025-08-20 12:41:49 INFO [SSS.App:1097] [Ensemble_Majority] 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:49 INFO [SSS.App:1101] [Ensemble_Majority] 風險閥門效果: PF原始=0.76, PF閥門=0.66
+2025-08-20 12:41:49 INFO [SSS.App:1102] [Ensemble_Majority] 風險閥門效果: MDD原始=-0.43%, MDD閥門=-0.36%
+2025-08-20 12:41:49 INFO [SSS.App:1148] [Ensemble] 執行成功: 權益曲線長度=2640, 交易數=221
+2025-08-20 12:41:49 INFO [SSS.App:1163] [Ensemble] 執行完成，ticker=00631L.TW, method=majority
+2025-08-20 12:41:50 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=221 rows, new_ds=2640 rows
+2025-08-20 12:41:50 INFO [SSS.App:1389] [Ensemble_Majority] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:50 INFO [SSS.App:815] [Ensemble_Proportional] 風險閥門開關狀態: global_apply=True, 類型=<class 'bool'>
+2025-08-20 12:41:50 INFO [SSS.App:817] [Ensemble_Proportional] 應用全局風險閥門: CAP=0.3, ATR比值門檻=1
+2025-08-20 12:41:50 INFO [SSS.App:848] [Ensemble_Proportional] 最新ATR比值: 1.0070 (20期:5.2500, 60期:5.2133)
+2025-08-20 12:41:50 INFO [SSS.App:1020] [Ensemble] 強制設定 majority_k_pct=0.55
+2025-08-20 12:41:50 INFO [SSS.App:1022] [Ensemble] 執行配置: ticker=00631L.TW, method=proportional, majority_k_pct=N/A
+2025-08-20 12:41:50 INFO [SSS.App:1032] [Ensemble_Proportional] Ensemble ATR 計算: atr_20=<class 'pandas.core.series.Series'>, atr_60=<class 'pandas.core.series.Series'>
+2025-08-20 12:41:50 INFO [SSS.App:1038] [Ensemble_Proportional] Ensemble ATR 有效值: atr_20=2621, atr_60=2581
+2025-08-20 12:41:50 INFO [SSS.App:1044] [Ensemble_Proportional] Ensemble ATR 最新值: a20=5.250001, a60=5.213334
+2025-08-20 12:41:50 INFO [SSS.App:1049] [Ensemble_Proportional] Ensemble ATR 比值: 1.0070 (門檻=1) -> 觸發=True
+2025-08-20 12:41:50 INFO [SSS.App:1053] [Ensemble_Proportional] 🔴 風險閥門觸發！ATR比值(1.0070) > 門檻(1)
+2025-08-20 12:41:50 INFO [SSS.App:1123] [Ensemble_Proportional] ⚪ 全局風險閥門未啟用
+2025-08-20 12:41:50 INFO [SSS.App:1148] [Ensemble] 執行成功: 權益曲線長度=2640, 交易數=390
+2025-08-20 12:41:50 INFO [SSS.App:1163] [Ensemble] 執行完成，ticker=00631L.TW, method=proportional
+2025-08-20 12:41:50 INFO [SSS.App:1416] 回測完成 - 策略數: 13, ticker: 00631L.TW, 數據行數: 2640
+2025-08-20 12:41:50 DEBUG [SSS.App:1417] 策略列表: ['Single 2', 'single_1887', 'Single 3', 'RMA_69', 'RMA_669', 'STM0', 'STM1', 'STM3', 'STM4', 'STM_1939', 'STM_2414_273', 'Ensemble_Majority', 'Ensemble_Proportional']
+2025-08-20 12:41:51 INFO [SSS.App:1123] [Ensemble_Proportional] ⚪ 全局風險閥門未啟用
+2025-08-20 12:41:51 INFO [SSS.App:1148] [Ensemble] 執行成功: 權益曲線長度=2640, 交易數=390
+2025-08-20 12:41:51 INFO [SSS.App:1163] [Ensemble] 執行完成，ticker=00631L.TW, method=proportional
+2025-08-20 12:41:51 INFO [SSS.App:1416] 回測完成 - 策略數: 13, ticker: 00631L.TW, 數據行數: 2640
+2025-08-20 12:41:51 DEBUG [SSS.App:1417] 策略列表: ['Single 2', 'single_1887', 'Single 3', 'RMA_69', 'RMA_669', 'STM0', 'STM1', 'STM3', 'STM4', 'STM_1939', 'STM_2414_273', 'Ensemble_Majority', 'Ensemble_Proportional']
+2025-08-20 12:41:53 INFO [SSS.App:1082] [Ensemble_Proportional] 🔴 開始套用風險閥門: cap=0.3, ratio=1.0070
+2025-08-20 12:41:53 INFO [SSS.App:1097] [Ensemble_Proportional] 風險閥門已套用（cap=0.3, ratio=1.0070）
+2025-08-20 12:41:53 INFO [SSS.App:1101] [Ensemble_Proportional] 風險閥門效果: PF原始=0.98, PF閥門=0.82
+2025-08-20 12:41:53 INFO [SSS.App:1102] [Ensemble_Proportional] 風險閥門效果: MDD原始=-0.36%, MDD閥門=-0.32%
+2025-08-20 12:41:53 INFO [SSS.App:1148] [Ensemble] 執行成功: 權益曲線長度=2640, 交易數=387
+2025-08-20 12:41:53 INFO [SSS.App:1163] [Ensemble] 執行完成，ticker=00631L.TW, method=proportional
+2025-08-20 12:41:54 INFO [SSS.App:1301] [UI_CHECK] 即將覆寫：new_trades=296 rows, new_ds=2640 rows
+2025-08-20 12:41:54 INFO [SSS.App:1389] [Ensemble_Proportional] 全局風險閥門已套用（逐日），風險天數=1314, CAP=0.30
+2025-08-20 12:41:54 INFO [SSS.App:1416] 回測完成 - 策略數: 13, ticker: 00631L.TW, 數據行數: 2640
+2025-08-20 12:41:54 DEBUG [SSS.App:1417] 策略列表: ['Single 2', 'single_1887', 'Single 3', 'RMA_69', 'RMA_669', 'STM0', 'STM1', 'STM3', 'STM4', 'STM_1939', 'STM_2414_273', 'Ensemble_Majority', 'Ensemble_Proportional']
+2025-08-20 12:41:55 DEBUG [SSS.App:1431] update_tab 被調用 - tab: backtest, strategy: Single 2
+2025-08-20 12:41:55 DEBUG [SSS.App:1443] 數據解析完成 - 策略數: 13, ticker: 00631L.TW, 數據行數: 2640
+2025-08-20 12:41:55 INFO [SSS.App:1511] [UI] Single 2 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:55 INFO [SSS.App:1512] [UI] Single 2 讀取後前 3 列 w: [0.0, 0.0, 0.30000000000000004]
+2025-08-20 12:41:55 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:55 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:55 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:55 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:55 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:55 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2015-07-15  1000000.0  1000000.0
+2015-07-16  1000000.0  1000000.0
+2015-07-17  1000000.0  1000000.0
+2025-08-20 12:41:55 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade   equity_after  trade_date      price
+0 2016-04-06   buy  19.660000  15259.410088  ...            999871.900000  990716.248126  2016-04-06  19.660000
+1 2016-05-09  sell  17.540001 -16542.037632  ...            965293.073620  965293.073620  2016-05-09  17.540001
+2 2016-05-17   buy  17.280001  16758.559640  ...            965169.419578  966677.692502  2016-05-17  17.280001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:55 INFO [SSS.App:1511] [UI] single_1887 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:55 INFO [SSS.App:1512] [UI] single_1887 讀取後前 3 列 w: [0.0, 0.0, 0.30000000000000004]
+2025-08-20 12:41:55 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:55 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:55 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:55 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:55 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:55 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2015-07-15  1000000.0  1000000.0
+2015-07-16  1000000.0  1000000.0
+2015-07-17  1000000.0  1000000.0
+2025-08-20 12:41:55 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade   equity_after  trade_date      price
+0 2016-04-06   buy  19.660000  15259.410088  ...            999871.900000  990716.248126  2016-04-06  19.660000
+1 2016-05-05  sell  17.650000 -16469.757029  ...            967102.411895  967102.411895  2016-05-05  17.650000
+2 2016-05-17   buy  17.280001  16789.971762  ...            966978.526076  968489.626096  2016-05-17  17.280001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:56 INFO [SSS.App:1511] [UI] Single 3 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:56 INFO [SSS.App:1512] [UI] Single 3 讀取後前 3 列 w: [0.0, 0.0, 0.30000000000000004]
+2025-08-20 12:41:56 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:56 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2015-07-15  1000000.0  1000000.0
+2015-07-16  1000000.0  1000000.0
+2015-07-17  1000000.0  1000000.0
+2025-08-20 12:41:56 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2016-04-06   buy  19.660000  15259.410088  ...             9.998719e+05  9.907162e+05  2016-04-06  19.660000
+1 2016-04-20  sell  19.840000 -15167.038797  ...             1.001113e+06  1.001113e+06  2016-04-20  19.840000
+2 2016-05-17   buy  17.280001  17380.431002  ...             1.000985e+06  1.002549e+06  2016-05-17  17.280001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:56 INFO [SSS.App:1511] [UI] RMA_69 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:56 INFO [SSS.App:1512] [UI] RMA_69 讀取後前 3 列 w: [0.0, 0.0, 0.30000000000000004]
+2025-08-20 12:41:56 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:56 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2016-04-26  1000000.0  1000000.0
+2016-04-27  1000000.0  1000000.0
+2016-04-28  1000000.0  1000000.0
+2025-08-20 12:41:56 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade   equity_after  trade_date      price
+0 2017-11-01   buy  37.119999   8081.896784  ...            999871.900000  997285.695495  2017-11-01  37.119999
+1 2017-11-14   buy  36.250000  19166.766377  ...            992537.297164  982679.284023  2017-11-14  36.250000
+2 2017-11-17  sell  36.250000 -19160.935136  ...            988070.327143  989220.293042  2017-11-17  36.250000
+
+[3 rows x 12 columns]
+2025-08-20 12:41:56 INFO [SSS.App:1511] [UI] RMA_669 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:56 INFO [SSS.App:1512] [UI] RMA_669 讀取後前 3 列 w: [0.0, 0.0, 0.9999908906]
+2025-08-20 12:41:56 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:56 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2016-05-17  1000000.0  1000000.0
+2016-05-18  1000000.0  1000000.0
+2016-05-19  1000000.0  1000000.0
+2025-08-20 12:41:56 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2017-12-01   buy  35.060001  28522.271861  ...            999573.003890  1.005277e+06  2017-12-01  35.060001
+1 2017-12-06  sell  34.630001 -19957.055527  ...            982874.256484  9.750909e+05  2017-12-06  34.630001
+2 2017-12-11   buy  33.950001  20145.820363  ...            976791.819443  9.874403e+05  2017-12-11  33.950001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:56 INFO [SSS.App:1511] [UI] STM0 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:56 INFO [SSS.App:1512] [UI] STM0 讀取後前 3 列 w: [0.0, 0.0, 0.0]
+2025-08-20 12:41:56 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:56 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:56 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:56 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2015-04-17   buy  18.400000  54343.742295  ...            999573.032094  1.006094e+06  2015-04-17  18.400000
+1 2015-05-15  sell  18.299999 -38023.246996  ...            989671.706259  9.916274e+05  2015-05-15  18.299999
+2 2015-05-20  sell  18.170000 -16305.715214  ...            985678.663846  9.856787e+05  2015-05-20  18.170000
+
+[3 rows x 12 columns]
+2025-08-20 12:41:56 INFO [SSS.App:1511] [UI] STM1 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:56 INFO [SSS.App:1512] [UI] STM1 讀取後前 3 列 w: [0.0, 0.0, 0.0]
+2025-08-20 12:41:56 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:56 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:56 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:57 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2015-06-12   buy  18.950001  15831.133927  ...            999871.900000  1.000505e+06  2015-06-12  18.950001
+1 2015-06-22  sell  19.030001 -15782.619273  ...            999213.879257  9.992139e+05  2015-06-22  19.030001
+2 2015-08-21   buy  21.500000  13942.519245  ...            999085.879959  9.182193e+05  2015-08-21  21.500000
+
+[3 rows x 12 columns]
+2025-08-20 12:41:57 INFO [SSS.App:1511] [UI] STM3 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:57 INFO [SSS.App:1512] [UI] STM3 讀取後前 3 列 w: [0.0, 0.0, 0.0]
+2025-08-20 12:41:57 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:57 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:57 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2015-06-12   buy  18.950001  15831.133927  ...            999871.900000  1.000505e+06  2015-06-12  18.950001
+1 2015-06-26  sell  18.590000 -16043.641213  ...            992254.114286  9.922541e+05  2015-06-26  18.590000
+2 2015-09-10   buy  18.049999  16491.758829  ...            992127.006534  9.934463e+05  2015-09-10  18.049999
+
+[3 rows x 12 columns]
+2025-08-20 12:41:57 INFO [SSS.App:1511] [UI] STM4 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:57 INFO [SSS.App:1512] [UI] STM4 讀取後前 3 列 w: [0.0, 0.0, 0.0]
+2025-08-20 12:41:57 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:57 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:57 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2015-02-25   buy  18.309999  16384.489828  ...             9.998719e+05  1.000200e+06  2015-02-25  18.309999
+1 2015-03-16   buy  18.469999  37993.364257  ...             1.002214e+06  1.001128e+06  2015-03-16  18.469999
+2 2015-04-10  sell  18.360001 -54260.504286  ...             9.898419e+05  9.898419e+05  2015-04-10  18.360001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:57 INFO [SSS.App:1511] [UI] STM_1939 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:57 INFO [SSS.App:1512] [UI] STM_1939 讀取後前 3 列 w: [0.0, 0.0, 0.0]
+2025-08-20 12:41:57 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:57 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:57 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type   open   delta_units  ...  equity_open_after_trade  equity_after  trade_date  price
+0 2015-12-21   buy  17.59  17055.144821  ...             9.998719e+05  1.006865e+06  2015-12-21  17.59
+1 2015-12-28   buy  18.40  38553.307207  ...             1.013266e+06  1.008309e+06  2015-12-28  18.40
+2 2016-01-05  sell  17.07 -55062.426006  ...             9.339915e+05  9.339915e+05  2016-01-05  17.07
+
+[3 rows x 12 columns]
+2025-08-20 12:41:57 INFO [SSS.App:1511] [UI] STM_2414_273 trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:57 INFO [SSS.App:1512] [UI] STM_2414_273 讀取後前 3 列 w: [0.0, 0.0, 0.0]
+2025-08-20 12:41:57 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:57 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:57 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:57 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:57 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date  type       open   delta_units  ...  equity_open_after_trade  equity_after  trade_date      price
+0 2015-08-25   buy  14.440000  20775.623872  ...             9.998719e+05  1.018778e+06  2015-08-25  14.440000
+1 2015-09-29   buy  17.540001  42379.349550  ...             1.061679e+06  1.038067e+06  2015-09-29  17.540001
+2 2015-11-19  sell  18.530001 -42366.436801  ...             1.116547e+06  1.121994e+06  2015-11-19  18.530001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:58 INFO [SSS.App:1511] [UI] Ensemble_Majority trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:58 INFO [SSS.App:1512] [UI] Ensemble_Majority 讀取後前 3 列 w: [0.2, 0.2, 0.2]
+2025-08-20 12:41:58 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:58 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:58 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:58 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:58 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:58 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:58 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date type       open   delta_units  ...  equity_open_after_trade   equity_after  trade_date      price
+0 2016-05-17  buy  17.280001   5720.479034  ...            988456.607397  990001.139354  2016-05-17  17.280001
+1 2016-05-18  buy  17.370001  28497.440746  ...            989789.774111  997541.081473  2016-05-18  17.370001
+2 2016-05-19  buy  17.540001   5687.235059  ...            997498.486468  989820.641036  2016-05-19  17.540001
+
+[3 rows x 12 columns]
+2025-08-20 12:41:58 INFO [SSS.App:1511] [UI] Ensemble_Proportional trades 來源優先序：trades -> trades_ui -> trade_df；實際使用=trades
+2025-08-20 12:41:58 INFO [SSS.App:1512] [UI] Ensemble_Proportional 讀取後前 3 列 w: [0.2, 0.2, 0.2]
+2025-08-20 12:41:58 INFO [SSS.App:1518] 標準化後 trades_ui 欄位: ['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
+2025-08-20 12:41:58 INFO [SSS.App:1591] [UI] trade_df 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:58 INFO [SSS.App:1592] [UI] trade_ledger_std 原始欄位：['date', 'type', 'open', 'delta_units', 'exec_notional', 'fee_buy', 'fee_sell', 'tax', 'shares_before', 'shares_after', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after']
+2025-08-20 12:41:58 INFO [SSS.App:1676] [UI] 使用標準化後的 daily_state_std，欄位: ['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:58 INFO [SSS.App:1682] [UI] daily_state_display cols=['equity', 'cash', 'position_value', 'w', 'invested_pct', 'cash_pct']
+2025-08-20 12:41:58 INFO [SSS.App:1684] [UI] daily_state_display head=
+               equity       cash
+2014-10-23  1000000.0  1000000.0
+2014-10-24  1000000.0  1000000.0
+2014-10-27  1000000.0  1000000.0
+2025-08-20 12:41:58 INFO [SSS.App:1685] [UI] trade_df cols=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price'] head=
+        date type       open  delta_units  ...  equity_open_after_trade   equity_after  trade_date      price
+0 2015-08-31  buy  16.650000  3122.602260  ...            974815.171056  980006.502974  2015-08-31  16.650000
+1 2015-09-02  buy  16.190001  2392.037613  ...            968160.719342  985877.748609  2015-09-02  16.190001
+2 2015-09-07  buy  16.660000   390.858786  ...            976753.312780  978512.184019  2015-09-07  16.660000
+
+[3 rows x 12 columns]
+2025-08-20 12:43:03 DEBUG [SSS.App:1431] update_tab 被調用 - tab: enhanced, strategy: Single 2
+2025-08-20 12:43:03 DEBUG [SSS.App:1443] 數據解析完成 - 策略數: 13, ticker: 00631L.TW, 數據行數: 2640
