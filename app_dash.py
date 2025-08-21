@@ -103,6 +103,32 @@ def calculate_atr(df, window):
         logger.warning(f"ATR 計算失敗: {e}")
         return pd.Series(index=df.index, dtype=float)
 
+
+def _build_benchmark_df(df_raw):
+    """建立基準資料 DataFrame，統一處理欄位名稱和數據轉換"""
+    bench = pd.DataFrame(index=pd.to_datetime(df_raw.index))
+    
+    # 收盤價欄位 - 優先使用英文欄位，回退到中文欄位
+    if 'close' in df_raw.columns:
+        bench["收盤價"] = pd.to_numeric(df_raw["close"], errors="coerce")
+    elif 'Close' in df_raw.columns:
+        bench["收盤價"] = pd.to_numeric(df_raw["Close"], errors="coerce")
+    elif '收盤價' in df_raw.columns:
+        bench["收盤價"] = pd.to_numeric(df_raw["收盤價"], errors="coerce")
+    
+    # 最高價和最低價欄位 - 優先使用英文欄位，回退到中文欄位
+    if 'high' in df_raw.columns and 'low' in df_raw.columns:
+        bench["最高價"] = pd.to_numeric(df_raw["high"], errors="coerce")
+        bench["最低價"] = pd.to_numeric(df_raw["low"], errors="coerce")
+    elif 'High' in df_raw.columns and 'Low' in df_raw.columns:
+        bench["最高價"] = pd.to_numeric(df_raw["High"], errors="coerce")
+        bench["最低價"] = pd.to_numeric(df_raw["Low"], errors="coerce")
+    elif '最高價' in df_raw.columns and '最低價' in df_raw.columns:
+        bench["最高價"] = pd.to_numeric(df_raw["最高價"], errors="coerce")
+        bench["最低價"] = pd.to_numeric(df_raw["最低價"], errors="coerce")
+    
+    return bench
+
 def calculate_equity_curve(open_px, w, cap, atr_ratio):
     """計算權益曲線"""
     try:
@@ -886,7 +912,7 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         a60 = atr_60.dropna().iloc[-1]
                         if a60 > 0:
                             ratio_local = float(a20 / a60)
-                            valve_triggered_local = (ratio_local >= atr_ratio)  # 建議使用 >=
+                            valve_triggered_local = (ratio_local > atr_ratio)  # 與進階分析一致：使用 ">"
                 except Exception:
                     pass
 
@@ -921,20 +947,28 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                             sell_tax_bp=float(trade_cost.get("sell_tax_bp", 30.0))
                         )
 
-                        rv = risk_valve_backtest(
-                            open_px=open_px,
-                            w=w_series,
-                            cost=cost_params,
-                            benchmark_df=df_raw,
-                            mode="cap",
-                            cap_level=float(risk_cap),
-                            slope20_thresh=0.0, slope60_thresh=0.0,
-                            atr_win=20, atr_ref_win=60,
-                            atr_ratio_mult=float(ratio_local if ratio_local is not None else atr_ratio),   # 若你有 local ratio，就用 local；否則全局 atr_ratio
-                            use_slopes=True,
-                            slope_method="polyfit",
-                            atr_cmp="gt"
-                        )
+                        # === 全局套用風險閥門：確保參數一致性 (2025/08/20) ===
+                        global_valve_params = {
+                            "open_px": open_px,
+                            "w": w_series,
+                            "cost": cost_params,
+                            "benchmark_df": df_raw,
+                            "mode": "cap",
+                            "cap_level": float(risk_cap),
+                            "slope20_thresh": 0.0, 
+                            "slope60_thresh": 0.0,
+                            "atr_win": 20, 
+                            "atr_ref_win": 60,
+                            "atr_ratio_mult": float(ratio_local if ratio_local is not None else atr_ratio),   # 若你有 local ratio，就用 local；否則全局 atr_ratio
+                            "use_slopes": True,
+                            "slope_method": "polyfit",
+                            "atr_cmp": "gt"
+                        }
+                        
+                        # 記錄全局風險閥門配置
+                        logger.info(f"[Global] 風險閥門配置: cap_level={global_valve_params['cap_level']}, atr_ratio_mult={global_valve_params['atr_ratio_mult']}")
+                        
+                        rv = risk_valve_backtest(**global_valve_params)
 
                         # 覆寫結果，確保 UI 與輸出一致（和 Ensemble 分支對齊）
                         result['equity_curve']     = pack_series(rv["daily_state_valve"]["equity"])
@@ -1053,7 +1087,7 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                             
                             if a60 > 0:
                                 ratio = float(a20 / a60)
-                                valve_triggered = (ratio >= atr_ratio)
+                                valve_triggered = (ratio > atr_ratio)  # 與進階分析一致：使用 ">"
                                 logger.info(f"[{strat}] Ensemble ATR 比值: {ratio:.4f} (門檻={atr_ratio}) -> 觸發={valve_triggered}")
                                 
                                 # 增加風險閥門觸發的詳細資訊
@@ -1236,16 +1270,60 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                 if ds is None or ds.empty or "w" not in ds.columns:
                     logger.warning(f"[{strat}] daily_state 不含 'w'，跳過全局風險閥門")
                 else:
-                    # 2) 算逐日 ATR 比值與逐日 mask
-                    atr20 = calculate_atr(df_raw, 20)
-                    atr60 = calculate_atr(df_raw, 60)
-                    if atr20 is None or atr60 is None:
-                        logger.warning(f"[{strat}] 無法計算 ATR20/60，跳過全局風險閥門")
-                    else:
+                    # 2) 使用與進階分析一致的風險閥門判斷邏輯
+                    try:
+                        from SSS_EnsembleTab import compute_risk_valve_signals
+                        
+                        # 建立基準資料（有高低價就帶上）
+                        bench = _build_benchmark_df(df_raw)
+                        # 收盤價欄位 - 優先使用英文欄位，回退到中文欄位
+                        if 'close' in df_raw.columns:
+                            bench["收盤價"] = pd.to_numeric(df_raw["close"], errors="coerce")
+                        elif 'Close' in df_raw.columns:
+                            bench["收盤價"] = pd.to_numeric(df_raw["Close"], errors="coerce")
+                        elif '收盤價' in df_raw.columns:
+                            bench["收盤價"] = pd.to_numeric(df_raw["收盤價"], errors="coerce")
+                        
+                        # 最高價和最低價欄位 - 優先使用英文欄位，回退到中文欄位
+                        if 'high' in df_raw.columns and 'low' in df_raw.columns:
+                            bench["最高價"] = pd.to_numeric(df_raw["high"], errors="coerce")
+                            bench["最低價"] = pd.to_numeric(df_raw["low"], errors="coerce")
+                        elif 'High' in df_raw.columns and 'Low' in df_raw.columns:
+                            bench["最高價"] = pd.to_numeric(df_raw["High"], errors="coerce")
+                            bench["最低價"] = pd.to_numeric(df_raw["Low"], errors="coerce")
+                        elif '最高價' in df_raw.columns and '最低價' in df_raw.columns:
+                            bench["最高價"] = pd.to_numeric(df_raw["最高價"], errors="coerce")
+                            bench["最低價"] = pd.to_numeric(df_raw["最低價"], errors="coerce")
+                        
+                        # 使用進階分析的預設參數：斜率門檻=0，ATR比值=1.5，比較符號=">"
+                        risk_signals = compute_risk_valve_signals(
+                            benchmark_df=bench,
+                            slope20_thresh=0.0,      # 20日斜率門檻
+                            slope60_thresh=0.0,      # 60日斜率門檻
+                            atr_win=20,              # ATR計算窗口
+                            atr_ref_win=60,          # ATR參考窗口
+                            atr_ratio_mult=float(atr_ratio),  # ATR比值門檻
+                            use_slopes=True,         # 啟用斜率條件
+                            slope_method="polyfit",   # 使用多項式擬合斜率
+                            atr_cmp="gt"             # 使用 ">" 比較符號
+                        )
+                        
+                        mask = risk_signals["risk_trigger"].reindex(ds.index).fillna(False)
+                        logger.info(f"[{strat}] 進階分析風險閥門：斜率條件啟用，ATR比值門檻={atr_ratio}")
+                        
+                    except Exception as e:
+                        logger.warning(f"[{strat}] 無法使用進階分析風險閥門，回退到 ATR-only: {e}")
+                        # 回退到原本的 ATR-only 邏輯
+                        atr20 = calculate_atr(df_raw, 20)
+                        atr60 = calculate_atr(df_raw, 60)
+                        if atr20 is None or atr60 is None:
+                            logger.warning(f"[{strat}] 無法計算 ATR20/60，跳過全局風險閥門")
+                            continue
                         ratio = (atr20 / atr60).replace([np.inf, -np.inf], np.nan)
-                        mask = (ratio >= float(atr_ratio))
-                        if force_trigger:
-                            mask[:] = True  # 強制全部日子套 CAP
+                        mask = (ratio > float(atr_ratio))  # 與進階分析一致：使用 ">" 比較
+                    
+                    if force_trigger:
+                        mask[:] = True  # 強制全部日子套 CAP
 
                     # 在全局壓 w 之前加：保存未套閥門的 baseline
                     if "daily_state_base" not in result and ds_raw is not None:
@@ -1290,30 +1368,30 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         )
                         
                         # 基準（有高低價就帶上）
-                        bench = pd.DataFrame(index=pd.to_datetime(df_raw.index))
-                        if 'close' in df_raw.columns:
-                            bench["收盤價"] = pd.to_numeric(df_raw["close"], errors="coerce")
-                        elif '收盤價' in df_raw.columns:
-                            bench["收盤價"] = pd.to_numeric(df_raw["收盤價"], errors="coerce")
-                        if 'high' in df_raw.columns and 'low' in df_raw.columns:
-                            bench["最高價"] = pd.to_numeric(df_raw["high"], errors="coerce")
-                            bench["最低價"] = pd.to_numeric(df_raw["low"], errors="coerce")
-                        elif '最高價' in df_raw.columns and '最低價' in df_raw.columns:
-                            bench["最高價"] = pd.to_numeric(df_raw["最高價"], errors="coerce")
-                            bench["最低價"] = pd.to_numeric(df_raw["最低價"], errors="coerce")
+                        bench = _build_benchmark_df(df_raw)
                         
-                        result_cap = risk_valve_backtest(
-                            open_px=open_px,
-                            w=ds["w"].astype(float).reindex(open_px.index).fillna(0.0),
-                            cost=cost,
-                            benchmark_df=bench,
-                            mode="cap",
-                            cap_level=float(risk_cap),  # 使用實際的風險上限值，而不是 1.0
-                            slope20_thresh=None, slope60_thresh=None,
-                            atr_win=20, atr_ref_win=60,
-                            atr_ratio_mult=float(atr_ratio),   # 👈 與全局一致
-                            use_slopes=False                   # 👈 與 UI 預設一致
-                        )
+                        # === 風險閥門回測：確保參數一致性 (2025/08/20) ===
+                        valve_params = {
+                            "open_px": open_px,
+                            "w": ds["w"].astype(float).reindex(open_px.index).fillna(0.0),
+                            "cost": cost,
+                            "benchmark_df": bench,
+                            "mode": "cap",
+                            "cap_level": float(risk_cap),  # 使用實際的風險上限值
+                            "slope20_thresh": 0.0,         # 👈 與進階分析一致：20日斜率門檻
+                            "slope60_thresh": 0.0,         # 👈 與進階分析一致：60日斜率門檻
+                            "atr_win": 20, 
+                            "atr_ref_win": 60,
+                            "atr_ratio_mult": float(atr_ratio),   # 👈 與全局一致
+                            "use_slopes": True,            # 👈 與進階分析一致：啟用斜率條件
+                            "slope_method": "polyfit",     # 👈 與進階分析一致：使用多項式擬合
+                            "atr_cmp": "gt"               # 👈 與進階分析一致：使用 ">" 比較符號
+                        }
+                        
+                        # 記錄風險閥門配置用於診斷
+                        logger.info(f"[{strat}] 風險閥門配置: cap_level={valve_params['cap_level']}, atr_ratio_mult={valve_params['atr_ratio_mult']}")
+                        
+                        result_cap = risk_valve_backtest(**valve_params)
                     except Exception as e:
                         logger.warning(f"[{strat}] 無法導入 risk_valve_backtest: {e}")
                         result_cap = None
@@ -2051,6 +2129,17 @@ def update_tab(data, tab, selected_strategy, theme):
         enhanced_controls = html.Div([
             html.H4("🔍 增強分析"),
             
+            # === 新增：全局參數套用狀態提示 ===
+            html.Div([
+                html.Div(id="enhanced-global-status", style={
+                    "padding": "12px",
+                    "marginBottom": "16px",
+                    "borderRadius": "8px",
+                    "border": "1px solid #dee2e6",
+                    "backgroundColor": "#f8f9fa"
+                })
+            ]),
+            
             # === 新增：從回測結果載入區塊 ===
             html.Details([
                 html.Summary("🧠 從回測結果載入"),
@@ -2095,7 +2184,18 @@ def update_tab(data, tab, selected_strategy, theme):
             dcc.Graph(id="rv-equity-chart"),
             dcc.Graph(id="rv-dd-chart"),
             
-
+            # === 新增：數據比對功能 ===
+            html.Details([
+                html.Summary("🔍 數據比對與診斷"),
+                html.Div([
+                    html.Div("直接輸出實際數據進行比對，診斷全局套用與強化分析結果不同的問題", 
+                             style={"marginBottom":"8px","fontSize":"14px","color":"#666"}),
+                    html.Button("輸出數據比對報告", id="export-data-comparison", n_clicks=0, 
+                               style={"width":"100%","marginBottom":"8px","backgroundColor":"#17a2b8","color":"white"}),
+                    html.Div(id="data-comparison-output", style={"fontSize":"12px","color":"#666","marginTop":"8px"}),
+                    dcc.Download(id="data-comparison-csv")
+                ])
+            ], style={"border":"1px solid #17a2b8","borderRadius":"8px","padding":"12px","marginTop":"12px"}),
             
             # === 新增：風險-報酬地圖（Pareto Map）區塊 ===
             html.Details([
@@ -2160,8 +2260,8 @@ def update_tab(data, tab, selected_strategy, theme):
                         ])
                     ])
                 ])
-            ], style={"border":"1px solid #333","borderRadius":"8px","padding":"12px","marginTop":"12px"})            
-        ], style={"border":"1px solid #333","borderRadius":"8px","padding":"12px","marginTop":"12px"})
+            ], style={"border":"1px solid #333","borderRadius":"8px","padding":"12px","marginTop":"12px"})
+        ])
         
         return enhanced_controls
 
@@ -2475,7 +2575,45 @@ def safe_startup():
     except Exception as e:
         print(f"啟動時數據下載失敗: {e}，繼續啟動應用")
 
-# --------- 增強分析 Callback：風險閥門回測（修正版） ---------
+# --------- 增強分析 Callback：全局參數狀態更新 ---------
+@app.callback(
+    Output("enhanced-global-status", "children"),
+    [
+        Input("global-apply-switch", "value"),
+        Input("risk-cap-input", "value"),
+        Input("atr-ratio-threshold", "value"),
+        Input("force-valve-trigger", "value")
+    ]
+)
+def update_enhanced_global_status(global_apply, risk_cap, atr_ratio, force_trigger):
+    """更新增強分析頁面的全局參數套用狀態"""
+    if not global_apply:
+        return html.Div([
+            html.Small("🔴 全局參數套用未啟用", style={"color":"#dc3545","fontWeight":"bold","fontSize":"14px"}),
+            html.Br(),
+            html.Small("增強分析將使用頁面內建的參數設定", style={"color":"#666","fontSize":"12px"}),
+            html.Br(),
+            html.Small("💡 如需使用全局設定，請在側邊欄啟用「啟用全局參數套用」", style={"color":"#666","fontSize":"11px","fontStyle":"italic"})
+        ])
+    
+    # 如果啟用全局參數套用
+    status_color = "#28a745" if not force_trigger else "#dc3545"
+    status_icon = "🟢" if not force_trigger else "🔴"
+    status_text = "正常" if not force_trigger else "強制觸發"
+    
+    return html.Div([
+        html.Small(f"{status_icon} 全局參數套用已啟用", style={"color":status_color,"fontWeight":"bold","fontSize":"14px"}),
+        html.Br(),
+        html.Small(f"風險閥門 CAP: {risk_cap}", style={"color":"#666","fontSize":"12px"}),
+        html.Br(),
+        html.Small(f"ATR比值門檻: {atr_ratio}", style={"color":"#666","fontSize":"12px"}),
+        html.Br(),
+        html.Small(f"狀態: {status_text}", style={"color":status_color,"fontSize":"12px"}),
+        html.Br(),
+        html.Small("💡 增強分析的風險閥門回測將優先使用這些全局設定", style={"color":"#28a745","fontSize":"11px","fontStyle":"italic"})
+    ])
+
+# --------- 增強分析 Callback：風險閥門回測（整合版） ---------
 @app.callback(
     Output("rv-summary","children"),
     Output("rv-equity-chart","figure"),
@@ -2485,15 +2623,92 @@ def safe_startup():
     State("rv-cap","value"),
     State("rv-atr-mult","value"),
     State("enhanced-trades-cache","data"),
+    # === 新增：讀取全局參數設定 ===
+    State("global-apply-switch","value"),
+    State("risk-cap-input","value"),
+    State("atr-ratio-threshold","value"),
+    # === 新增：讀取全局套用數據源 ===
+    State("backtest-store","data"),
     prevent_initial_call=True
 )
-def _run_rv(n_clicks, mode, cap_level, atr_mult, cache):
+def _run_rv(n_clicks, mode, cap_level, atr_mult, cache, global_apply, global_risk_cap, global_atr_ratio, backtest_data=None):
     if not n_clicks or not cache:
         return "請先載入策略資料", no_update, no_update
 
-    # 從 enhanced-trades-cache 還原資料
-    df_raw = df_from_pack(cache.get("df_raw"))
-    daily_state = df_from_pack(cache.get("daily_state"))
+    # === 修正：優先使用全局參數設定 ===
+    if global_apply:
+        # 如果啟用全局參數套用，優先使用全局設定
+        effective_cap = global_risk_cap if global_risk_cap is not None else cap_level
+        effective_atr_ratio = global_atr_ratio if global_atr_ratio is not None else atr_mult
+        logger.info(f"增強分析使用全局參數：CAP={effective_cap}, ATR比值門檻={effective_atr_ratio}")
+        
+        # === 新增：詳細的參數對比日誌 ===
+        logger.info(f"=== 增強分析參數對比 ===")
+        logger.info(f"全局設定：CAP={global_risk_cap}, ATR比值門檻={global_atr_ratio}")
+        logger.info(f"頁面設定：CAP={cap_level}, ATR比值門檻={atr_mult}")
+        logger.info(f"最終使用：CAP={effective_cap}, ATR比值門檻={effective_atr_ratio}")
+        
+    else:
+        # 否則使用增強分析頁面的設定
+        effective_cap = cap_level
+        effective_atr_ratio = atr_mult
+        logger.info(f"增強分析使用頁面參數：CAP={effective_cap}, ATR比值門檻={effective_atr_ratio}")
+    
+    # === 整合：使用與全局套用相同的數據源 ===
+    logger.info(f"=== 數據驗證 ===")
+    
+    # 優先使用全局套用的數據源，確保一致性
+    if global_apply and backtest_data:
+        # 從 backtest-store 獲取數據，與全局套用保持一致
+        results = backtest_data.get("results", {})
+        if results:
+            # 找到對應的策略結果
+            strategy_name = cache.get("strategy") if cache else None
+            if strategy_name and strategy_name in results:
+                result = results[strategy_name]
+                df_raw = df_from_pack(backtest_data.get("df_raw"))
+                daily_state = df_from_pack(result.get("daily_state_std") or result.get("daily_state"))
+                logger.info(f"使用全局套用數據源: {strategy_name}")
+            else:
+                # 回退到快取數據
+                df_raw = df_from_pack(cache.get("df_raw"))
+                daily_state = df_from_pack(cache.get("daily_state"))
+                logger.info("回退到快取數據源")
+        else:
+            # 回退到快取數據
+            df_raw = df_from_pack(cache.get("df_raw"))
+            daily_state = df_from_pack(cache.get("daily_state"))
+            logger.info("回退到快取數據源")
+    else:
+        # 使用快取數據
+        df_raw = df_from_pack(cache.get("df_raw"))
+        daily_state = df_from_pack(cache.get("daily_state"))
+        logger.info("使用快取數據源")
+    
+    # === 新增：數據一致性檢查 ===
+    if global_apply and backtest_data:
+        logger.info("=== 數據一致性檢查 ===")
+        # 檢查與全局套用數據的一致性
+        global_df_raw = df_from_pack(backtest_data.get("df_raw"))
+        if global_df_raw is not None and df_raw is not None:
+            if len(global_df_raw) == len(df_raw):
+                logger.info(f"✅ 數據長度一致: {len(df_raw)}")
+            else:
+                logger.warning(f"⚠️  數據長度不一致: 全局={len(global_df_raw)}, 增強分析={len(df_raw)}")
+        
+        if daily_state is not None:
+            logger.info(f"✅ daily_state 載入成功: {len(daily_state)} 行")
+        else:
+            logger.warning("⚠️  daily_state 載入失敗")
+    
+    # === 原有數據驗證日誌 ===
+    logger.info(f"df_raw 形狀: {df_raw.shape if df_raw is not None else 'None'}")
+    logger.info(f"daily_state 形狀: {daily_state.shape if daily_state is not None else 'None'}")
+    if daily_state is not None:
+        logger.info(f"daily_state 欄位: {list(daily_state.columns)}")
+        logger.info(f"daily_state 索引範圍: {daily_state.index.min()} 到 {daily_state.index.max()}")
+        if "w" in daily_state.columns:
+            logger.info(f"權重欄位統計: 最小值={daily_state['w'].min():.4f}, 最大值={daily_state['w'].max():.4f}, 平均值={daily_state['w'].mean():.4f}")
     
     if df_raw is None or df_raw.empty:
         return "找不到股價資料", no_update, no_update
@@ -2533,13 +2748,28 @@ def _run_rv(n_clicks, mode, cap_level, atr_mult, cache):
     # 需要用到 SSS_EnsembleTab 內新加的函式
     try:
         from SSS_EnsembleTab import risk_valve_backtest
-        out = risk_valve_backtest(
-            open_px=open_px, w=w, cost=cost, benchmark_df=bench,
-            mode=mode, cap_level=float(cap_level),
-            slope20_thresh=0.0, slope60_thresh=0.0,
-            atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult),
-            use_slopes=True, slope_method="polyfit", atr_cmp="gt"
-        )
+        # === 增強分析風險閥門：確保參數一致性 (2025/08/20) ===
+        enhanced_valve_params = {
+            "open_px": open_px, 
+            "w": w, 
+            "cost": cost, 
+            "benchmark_df": bench,
+            "mode": mode, 
+            "cap_level": float(effective_cap),  # === 修正：使用有效參數 ===
+            "slope20_thresh": 0.0, 
+            "slope60_thresh": 0.0,
+            "atr_win": 20, 
+            "atr_ref_win": 60, 
+            "atr_ratio_mult": float(effective_atr_ratio),  # === 修正：使用有效參數 ===
+            "use_slopes": True, 
+            "slope_method": "polyfit", 
+            "atr_cmp": "gt"
+        }
+        
+        # 記錄增強分析風險閥門配置
+        logger.info(f"[Enhanced] 風險閥門配置: cap_level={enhanced_valve_params['cap_level']}, atr_ratio_mult={enhanced_valve_params['atr_ratio_mult']}")
+        
+        out = risk_valve_backtest(**enhanced_valve_params)
     except Exception as e:
         return f"風險閥門回測執行失敗: {e}", no_update, no_update
 
@@ -2549,11 +2779,14 @@ def _run_rv(n_clicks, mode, cap_level, atr_mult, cache):
     sig = out["signals"]["risk_trigger"]
     trigger_days = int(sig.fillna(False).sum())
     
+    # === 修正：顯示實際使用的參數 ===
     summary = html.Div([
         html.Code(f"PF: 原始 {m['pf_orig']:.2f} → 閥門 {m['pf_valve']:.2f}"), html.Br(),
         html.Code(f"MDD: 原始 {m['mdd_orig']:.2%} → 閥門 {m['mdd_valve']:.2%}"), html.Br(),
         html.Code(f"右尾總和(>P90 正報酬): 原始 {m['right_tail_sum_orig']:.2f} → 閥門 {m['right_tail_sum_valve']:.2f} (↓{m['right_tail_reduction']:.2f})"), html.Br(),
-        html.Code(f"風險觸發天數：{trigger_days} 天")
+        html.Code(f"風險觸發天數：{trigger_days} 天"), html.Br(),
+        html.Code(f"使用參數：CAP={effective_cap}, ATR比值門檻={effective_atr_ratio}"), html.Br(),
+        html.Code(f"參數來源：{'全局設定' if global_apply else '頁面設定'}", style={"color": "#28a745" if global_apply else "#ffc107"})
     ])
 
     # 繪圖：兩版權益與回撤
@@ -2595,6 +2828,198 @@ def _run_rv(n_clicks, mode, cap_level, atr_mult, cache):
     fig_dd.update_layout(title="回撤曲線", legend_orientation="h", yaxis_tickformat=".0%")
 
     return summary, fig_eq, fig_dd
+
+# --------- 增強分析 Callback：數據比對報告 ---------
+@app.callback(
+    Output("data-comparison-output", "children"),
+    Output("data-comparison-csv", "data"),
+    Input("export-data-comparison", "n_clicks"),
+    State("enhanced-trades-cache", "data"),
+    State("backtest-store", "data"),
+    State("global-apply-switch", "value"),
+    State("risk-cap-input", "value"),
+    State("atr-ratio-threshold", "value"),
+    State("rv-cap", "value"),
+    State("rv-atr-mult", "value"),
+    prevent_initial_call=True
+)
+def generate_data_comparison_report(n_clicks, cache, backtest_data, global_apply, global_cap, global_atr, page_cap, page_atr):
+    """生成數據比對報告，診斷全局套用與強化分析結果不同的問題 - 增強版 (2025/08/20)"""
+    if not n_clicks:
+        return "請點擊按鈕生成報告", no_update
+    
+    logger.info(f"=== 生成增強數據比對報告 ===")
+    
+    # 收集參數資訊
+    param_info = {
+        "全局參數套用": "啟用" if global_apply else "未啟用",
+        "全局風險閥門CAP": global_cap,
+        "全局ATR比值門檻": global_atr,
+        "頁面風險閥門CAP": page_cap,
+        "頁面ATR比值門檻": page_atr,
+        "最終使用CAP": global_cap if global_apply else page_cap,
+        "最終使用ATR比值門檻": global_atr if global_apply else page_atr,
+        "參數差異分析": "CAP差異={}, ATR差異={}".format(
+            abs((global_cap or 0) - (page_cap or 0)), 
+            abs((global_atr or 0) - (page_atr or 0))
+        )
+    }
+    
+    # 收集數據資訊
+    data_info = {}
+    
+    if cache:
+        df_raw = df_from_pack(cache.get("df_raw"))
+        daily_state = df_from_pack(cache.get("daily_state"))
+        trade_data = df_from_pack(cache.get("trade_data"))
+        weight_curve = df_from_pack(cache.get("weight_curve"))
+        
+        data_info["enhanced_cache"] = {
+            "df_raw_shape": df_raw.shape if df_raw is not None else None,
+            "daily_state_shape": daily_state.shape if daily_state is not None else None,
+            "trade_data_shape": trade_data.shape if trade_data is not None else None,
+            "weight_curve_shape": weight_curve.shape if weight_curve is not None else None,
+            "daily_state_columns": list(daily_state.columns) if daily_state is not None else None,
+            "daily_state_index_range": f"{daily_state.index.min()} 到 {daily_state.index.max()}" if daily_state is not None and not daily_state.empty else None
+        }
+        
+        if daily_state is not None and "w" in daily_state.columns:
+            data_info["enhanced_cache"]["weight_stats"] = {
+                "min": float(daily_state["w"].min()),
+                "max": float(daily_state["w"].max()),
+                "mean": float(daily_state["w"].mean()),
+                "std": float(daily_state["w"].std())
+            }
+    
+    if backtest_data and backtest_data.get("results"):
+        results = backtest_data["results"]
+        data_info["backtest_store"] = {
+            "available_strategies": list(results.keys()),
+            "results_count": len(results)
+        }
+        
+        # 選擇第一個策略進行詳細分析
+        if results:
+            first_strategy = list(results.keys())[0]
+            result = results[first_strategy]
+            
+            data_info["backtest_store"]["first_strategy"] = {
+                "name": first_strategy,
+                "has_daily_state": result.get("daily_state") is not None,
+                "has_daily_state_std": result.get("daily_state_std") is not None,
+                "has_weight_curve": result.get("weight_curve") is not None,
+                "valve_info": result.get("valve", {})
+            }
+    
+    # 生成報告
+    report_lines = []
+    report_lines.append("=== 數據比對報告 ===")
+    report_lines.append("")
+    
+    # 參數部分
+    report_lines.append("📊 參數設定:")
+    for key, value in param_info.items():
+        report_lines.append(f"  {key}: {value}")
+    report_lines.append("")
+    
+    # 數據部分
+    report_lines.append("📈 數據狀態:")
+    if "enhanced_cache" in data_info:
+        report_lines.append("  Enhanced Cache:")
+        for key, value in data_info["enhanced_cache"].items():
+            report_lines.append(f"    {key}: {value}")
+        report_lines.append("")
+    
+    if "backtest_store" in data_info:
+        report_lines.append("  Backtest Store:")
+        for key, value in data_info["backtest_store"].items():
+            report_lines.append(f"    {key}: {value}")
+        report_lines.append("")
+    
+    # 增強診斷建議 (2025/08/20)
+    report_lines.append("🔍 詳細診斷建議:")
+    
+    # 參數一致性檢查
+    if global_apply:
+        cap_diff = abs((global_cap or 0) - (page_cap or 0))
+        atr_diff = abs((global_atr or 0) - (page_atr or 0))
+        if cap_diff > 0.001 or atr_diff > 0.001:
+            report_lines.append(f"  ⚠️  全局與頁面參數差異: CAP差異={cap_diff:.4f}, ATR差異={atr_diff:.4f}")
+            report_lines.append("      → 建議檢查 UI 介面的參數同步機制")
+        else:
+            report_lines.append("  ✅ 全局參數與頁面參數一致")
+    else:
+        report_lines.append("  ℹ️  未啟用全局參數套用，使用頁面參數")
+        report_lines.append("      → 確認是否需要啟用全局套用以保持一致性")
+    
+    # 數據完整性檢查
+    enhanced_has_data = "enhanced_cache" in data_info and data_info["enhanced_cache"]["daily_state_shape"]
+    backtest_has_data = "backtest_store" in data_info and data_info["backtest_store"]["results_count"] > 0
+    
+    if enhanced_has_data:
+        report_lines.append("  ✅ Enhanced Cache 有數據")
+        if "weight_stats" in data_info["enhanced_cache"]:
+            ws = data_info["enhanced_cache"]["weight_stats"]
+            report_lines.append(f"      權重範圍: {ws['min']:.4f} ~ {ws['max']:.4f}, 均值: {ws['mean']:.4f}")
+    else:
+        report_lines.append("  ❌ Enhanced Cache 無數據")
+        report_lines.append("      → 可能需要重新執行增強分析")
+    
+    if backtest_has_data:
+        report_lines.append("  ✅ Backtest Store 有結果")
+    else:
+        report_lines.append("  ❌ Backtest Store 無結果")
+        report_lines.append("      → 可能需要重新執行回測分析")
+    
+    # 風險閥門邏輯檢查
+    effective_cap = global_cap if global_apply else page_cap
+    effective_atr = global_atr if global_apply else page_atr
+    
+    report_lines.append("  🔧 風險閥門配置:")
+    report_lines.append(f"      有效CAP值: {effective_cap}")
+    report_lines.append(f"      有效ATR門檻: {effective_atr}")
+    
+    if effective_cap and effective_cap < 0.1:
+        report_lines.append("      ⚠️  CAP值過低，可能造成過度保守")
+    if effective_atr and effective_atr > 3.0:
+        report_lines.append("      ⚠️  ATR門檻過高，可能很少觸發")
+    
+    # 一致性檢查總結
+    consistency_issues = []
+    if global_apply and (cap_diff > 0.001 or atr_diff > 0.001):
+        consistency_issues.append("參數不一致")
+    if not enhanced_has_data:
+        consistency_issues.append("Enhanced Cache缺失")
+    if not backtest_has_data:
+        consistency_issues.append("Backtest Store缺失")
+    
+    if consistency_issues:
+        report_lines.append(f"  🚨 發現一致性問題: {', '.join(consistency_issues)}")
+        report_lines.append("      建議優先解決這些問題以確保分析結果一致性")
+    else:
+        report_lines.append("  ✅ 未發現明顯一致性問題")
+    
+    # 生成 CSV 數據
+    csv_data = []
+    for key, value in param_info.items():
+        csv_data.append({"項目": key, "數值": str(value)})
+    
+    csv_data.append({"項目": "", "數值": ""})
+    csv_data.append({"項目": "=== 數據狀態 ===", "數值": ""})
+    
+    if "enhanced_cache" in data_info:
+        for key, value in data_info["enhanced_cache"].items():
+            csv_data.append({"項目": f"Enhanced_{key}", "數值": str(value)})
+    
+    if "backtest_store" in data_info:
+        for key, value in data_info["backtest_store"].items():
+            csv_data.append({"項目": f"Backtest_{key}", "數值": str(value)})
+    
+    # 返回報告和 CSV 下載
+    report_text = "\n".join(report_lines)
+    csv_df = pd.DataFrame(csv_data)
+    
+    return report_text, dcc.send_data_frame(csv_df.to_csv, "data_comparison_report.csv", index=False)
 
 def _first_col(df, names):
     low = {c.lower(): c for c in df.columns}
@@ -3296,7 +3721,15 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
             # 以索引對齊
             ds.index = pd.to_datetime(ds.index)
             wc.index = pd.to_datetime(wc.index)
-            ds["w"] = wc.reindex(ds.index).ffill().bfill()
+            # 修正：確保 wc 是 Series 並且正確對齊
+            if isinstance(wc, pd.DataFrame):
+                if "w" in wc.columns:
+                    wc_series = wc["w"]
+                else:
+                    wc_series = wc.iloc[:, 0]  # 取第一列
+            else:
+                wc_series = wc
+            ds["w"] = wc_series.reindex(ds.index).ffill().bfill()
         daily_state = ds
     
     # 準備 df_raw
@@ -3464,7 +3897,15 @@ def _auto_cache_best_strategy(bstore, current_selection):
             # 以索引對齊
             ds.index = pd.to_datetime(ds.index)
             wc.index = pd.to_datetime(wc.index)
-            ds["w"] = wc.reindex(ds.index).ffill().bfill()
+            # 修正：確保 wc 是 Series 並且正確對齊
+            if isinstance(wc, pd.DataFrame):
+                if "w" in wc.columns:
+                    wc_series = wc["w"]
+                else:
+                    wc_series = wc.iloc[:, 0]  # 取第一列
+            else:
+                wc_series = wc
+            ds["w"] = wc_series.reindex(ds.index).ffill().bfill()
         daily_state = ds
     
     # 準備 df_raw
