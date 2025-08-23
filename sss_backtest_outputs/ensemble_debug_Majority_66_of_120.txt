@@ -4,7 +4,7 @@ Ensemble 調試信息
 策略數量: 120
 參數: EnsembleParams(floor=0.2, ema_span=3, delta_cap=0.3, majority_k=66, min_cooldown_days=1, min_trade_dw=0.01)
 成本: CostParams(buy_fee_bp=4.27, sell_fee_bp=4.27, sell_tax_bp=30.0)
-權重統計: min=0.2000, mean=0.7884, max=0.9985
-績效: {'total_return': 44.65071166391428, 'annual_return': 4.260499560509806, 'max_drawdown': -0.43322808046929573, 'sharpe_ratio': 1.4095483584411117, 'calmar_ratio': 9.834310730492367, 'sortino_ratio': 1.6385169822550865, 'time_in_market': 0.7425217720560394, 'turnover_py': 2.456978884420666, 'num_trades': 218}
+權重統計: min=0.2000, mean=0.7880, max=0.9985
+績效: {'total_return': 44.56673972818878, 'annual_return': 4.24926916818145, 'max_drawdown': -0.43322808046929573, 'sharpe_ratio': 1.4083791400330523, 'calmar_ratio': 9.808388144135106, 'sortino_ratio': 1.6371539557678827, 'time_in_market': 0.7419598940597806, 'turnover_py': 2.4551196495478544, 'num_trades': 218}
 交易明細欄位: trades=['trade_date', 'type', 'price_open', 'weight_change', 'w_before', 'w_after', 'cost', 'price'], trade_ledger=['date', 'type', 'open', 'delta_units', 'exec_notional', 'w_before', 'w_after', 'cash_after', 'equity_open_after_trade', 'equity_after', 'trade_date', 'price']
-交易筆數: trades=216, trade_ledger=216
+交易筆數: trades=217, trade_ledger=217

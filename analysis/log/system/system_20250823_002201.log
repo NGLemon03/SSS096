@@ -1,0 +1,88 @@
+2025-08-23 00:22:01 INFO [SSS.System:172] === 統一日誌系統初始化完成 ===
+2025-08-23 00:22:01 INFO [SSS.System:173] 檔案日誌啟用: True
+2025-08-23 00:22:01 INFO [SSS.System:174] 日誌目錄: C:\Stock_reserach\SSS096\analysis\log
+2025-08-23 00:22:01 INFO [dash.dash:2160] Dash is running on http://127.0.0.2:8051/
+
+2025-08-23 00:22:06 INFO [SSS.System:285] 本地數據 'C:\Stock_reserach\SSS096\data\00631L.TW_data_raw.csv' 最後更新: 2025-08-23 00:14:20 CST
+2025-08-23 00:22:06 INFO [SSS.System:288] 數據 '00631L.TW' 今日已是最新 (12:00 PM 後更新).
+2025-08-23 00:22:06 INFO [SSS.System:285] 本地數據 'C:\Stock_reserach\SSS096\data\00631L.TW_data_raw.csv' 最後更新: 2025-08-23 00:14:20 CST
+2025-08-23 00:22:06 INFO [SSS.System:288] 數據 '00631L.TW' 今日已是最新 (12:00 PM 後更新).
+2025-08-23 00:22:06 INFO [SSS.System:285] 本地數據 'C:\Stock_reserach\SSS096\data\00631L.TW_data_raw.csv' 最後更新: 2025-08-23 00:14:20 CST
+2025-08-23 00:22:06 INFO [SSS.System:288] 數據 '00631L.TW' 今日已是最新 (12:00 PM 後更新).
+2025-08-23 00:22:06 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3175.71%, 交易次數=24
+2025-08-23 00:22:07 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3382.38%, 交易次數=23
+2025-08-23 00:22:07 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 1954.59%, 交易次數=21
+2025-08-23 00:22:07 INFO [SSS.System:285] 本地數據 'C:\Stock_reserach\SSS096\data\00631L.TW_data_raw.csv' 最後更新: 2025-08-23 00:14:20 CST
+2025-08-23 00:22:07 INFO [SSS.System:288] 數據 '00631L.TW' 今日已是最新 (12:00 PM 後更新).
+2025-08-23 00:22:07 INFO [SSS.System:285] 本地數據 'C:\Stock_reserach\SSS096\data\^TWII_data_raw.csv' 最後更新: 2025-08-23 00:14:21 CST
+2025-08-23 00:22:07 INFO [SSS.System:288] 數據 '^TWII' 今日已是最新 (12:00 PM 後更新).
+2025-08-23 00:22:07 INFO [SSS.System:285] 本地數據 'C:\Stock_reserach\SSS096\data\2414.TW_data_raw.csv' 最後更新: 2025-08-23 00:14:22 CST
+2025-08-23 00:22:07 INFO [SSS.System:288] 數據 '2414.TW' 今日已是最新 (12:00 PM 後更新).
+2025-08-23 00:22:08 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 1824.15%, 交易次數=12
+2025-08-23 00:22:08 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 2023.51%, 交易次數=10
+2025-08-23 00:22:08 INFO [SSS.System:685] 開始計算策略: linlen=25, factor=80.00, smaalen=85, prom_factor=9.00, min_dist=8, buy_shift=0, exit_shift=6, vol_window=90, quantile_win=65, signal_cooldown_days=7
+2025-08-23 00:22:09 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2616.17%, 交易次數=20
+2025-08-23 00:22:09 INFO [SSS.System:685] 開始計算策略: linlen=15, factor=40.00, smaalen=40, prom_factor=70.00, min_dist=10, buy_shift=6, exit_shift=4, vol_window=40, quantile_win=65, signal_cooldown_days=10
+2025-08-23 00:22:10 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3175.71%, 交易次數=24
+2025-08-23 00:22:11 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2476.36%, 交易次數=13
+2025-08-23 00:22:11 INFO [SSS.System:685] 開始計算策略: linlen=20, factor=40.00, smaalen=40, prom_factor=69.00, min_dist=10, buy_shift=6, exit_shift=4, vol_window=45, quantile_win=55, signal_cooldown_days=10
+2025-08-23 00:22:14 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3382.38%, 交易次數=23
+2025-08-23 00:22:14 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3365.94%, 交易次數=14
+2025-08-23 00:22:14 INFO [SSS.System:685] 開始計算策略: linlen=10, factor=40.00, smaalen=35, prom_factor=68.00, min_dist=8, buy_shift=6, exit_shift=0, vol_window=40, quantile_win=65, signal_cooldown_days=10
+2025-08-23 00:22:17 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 1954.59%, 交易次數=21
+2025-08-23 00:22:17 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2159.80%, 交易次數=31
+2025-08-23 00:22:17 INFO [SSS.System:685] 開始計算策略: linlen=20, factor=40.00, smaalen=240, prom_factor=48.00, min_dist=14, buy_shift=1, exit_shift=1, vol_window=80, quantile_win=175, signal_cooldown_days=4
+2025-08-23 00:22:20 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 1824.15%, 交易次數=12
+2025-08-23 00:22:22 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3174.82%, 交易次數=13
+2025-08-23 00:22:22 INFO [SSS.System:685] 開始計算策略: linlen=175, factor=40.00, smaalen=10, prom_factor=47.00, min_dist=5, buy_shift=0, exit_shift=0, vol_window=90, quantile_win=165, signal_cooldown_days=4
+2025-08-23 00:22:23 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 2023.51%, 交易次數=10
+2025-08-23 00:22:25 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2616.17%, 交易次數=20
+2025-08-23 00:22:26 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 4613.44%, 交易次數=13
+2025-08-23 00:22:29 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2476.36%, 交易次數=13
+2025-08-23 00:22:33 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3365.94%, 交易次數=14
+2025-08-23 00:22:36 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2159.80%, 交易次數=31
+2025-08-23 00:22:40 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3174.82%, 交易次數=13
+2025-08-23 00:22:44 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 4613.44%, 交易次數=13
+2025-08-23 00:22:50 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Majority_66_of_120, 權益曲線長度=2643, 交易數=217
+2025-08-23 00:22:51 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3175.71%, 交易次數=24
+2025-08-23 00:22:51 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3382.38%, 交易次數=23
+2025-08-23 00:22:52 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 1954.59%, 交易次數=21
+2025-08-23 00:22:52 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 1824.15%, 交易次數=12
+2025-08-23 00:22:53 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 2023.51%, 交易次數=10
+2025-08-23 00:22:53 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2616.17%, 交易次數=20
+2025-08-23 00:22:54 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2476.36%, 交易次數=13
+2025-08-23 00:22:54 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3365.94%, 交易次數=14
+2025-08-23 00:22:54 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2159.80%, 交易次數=31
+2025-08-23 00:22:55 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3174.82%, 交易次數=13
+2025-08-23 00:22:55 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 4613.44%, 交易次數=13
+2025-08-23 00:22:57 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Majority_66_of_120, 權益曲線長度=2643, 交易數=217
+2025-08-23 00:23:03 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Proportional_N120, 權益曲線長度=2643, 交易數=390
+2025-08-23 00:23:04 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Majority_66_of_120, 權益曲線長度=2643, 交易數=217
+2025-08-23 00:23:06 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Proportional_N120, 權益曲線長度=2643, 交易數=390
+2025-08-23 00:23:11 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Proportional_N120, 權益曲線長度=2643, 交易數=390
+2025-08-23 00:26:39 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3175.71%, 交易次數=24
+2025-08-23 00:26:39 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3382.38%, 交易次數=23
+2025-08-23 00:26:40 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 1954.59%, 交易次數=21
+2025-08-23 00:26:40 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 1824.15%, 交易次數=12
+2025-08-23 00:26:40 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 2023.51%, 交易次數=10
+2025-08-23 00:26:41 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2616.17%, 交易次數=20
+2025-08-23 00:26:41 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2476.36%, 交易次數=13
+2025-08-23 00:26:41 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3365.94%, 交易次數=14
+2025-08-23 00:26:42 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2159.80%, 交易次數=31
+2025-08-23 00:26:42 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3174.82%, 交易次數=13
+2025-08-23 00:26:42 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 4613.44%, 交易次數=13
+2025-08-23 00:26:44 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Majority_66_of_120, 權益曲線長度=2643, 交易數=217
+2025-08-23 00:26:46 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Proportional_N120, 權益曲線長度=2643, 交易數=390
+2025-08-23 00:30:01 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3175.71%, 交易次數=24
+2025-08-23 00:30:03 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 3382.38%, 交易次數=23
+2025-08-23 00:30:05 INFO [SSS.System:1320] single 回測結果: 總報酬率 = 1954.59%, 交易次數=21
+2025-08-23 00:30:07 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 1824.15%, 交易次數=12
+2025-08-23 00:30:09 INFO [SSS.System:1320] RMA 回測結果: 總報酬率 = 2023.51%, 交易次數=10
+2025-08-23 00:30:11 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2616.17%, 交易次數=20
+2025-08-23 00:30:15 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2476.36%, 交易次數=13
+2025-08-23 00:30:18 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3365.94%, 交易次數=14
+2025-08-23 00:30:21 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 2159.80%, 交易次數=31
+2025-08-23 00:30:25 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 3174.82%, 交易次數=13
+2025-08-23 00:30:28 INFO [SSS.System:1320] ssma_turn 回測結果: 總報酬率 = 4613.44%, 交易次數=13
+2025-08-23 00:30:32 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Majority_66_of_120, 權益曲線長度=2643, 交易數=217
+2025-08-23 00:30:37 INFO [runners.ensemble_runner:38] [Ensemble] 執行成功: Proportional_N120, 權益曲線長度=2643, 交易數=390

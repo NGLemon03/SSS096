@@ -27,48 +27,6 @@ os.environ["SSS_CREATE_LOGS"] = "1"
 # 獲取日誌器（懶加載）
 logger = get_logger("SSS.App")
 
-def normalize_daily_state_columns(ds: pd.DataFrame) -> pd.DataFrame:
-    """將不同來源的 daily_state 欄位語意統一：
-    - 若 equity 實為倉位市值，改名為 position_value
-    - 建立 portfolio_value = position_value + cash
-    - 保證有 invested_pct / cash_pct
-    """
-    if ds is None or ds.empty:
-        return ds
-    ds = ds.copy()
-
-    # 若已經有 position_value 與 cash，直接建立 portfolio_value
-    if {'position_value','cash'}.issubset(ds.columns):
-        ds['portfolio_value'] = ds['position_value'] + ds['cash']
-
-    # 僅有 equity + cash 的情況 -> 判斷 equity 是總資產還是倉位
-    elif {'equity','cash'}.issubset(ds.columns):
-        # 判斷規則：若 equity/(equity+cash) 的中位數顯著 < 0.9，較像「倉位市值」
-        ratio = (ds['equity'] / (ds['equity'] + ds['cash'])).replace([np.inf, -np.inf], np.nan).clip(0,1)
-        if ratio.median(skipna=True) < 0.9:
-            # 把 equity 當成倉位市值
-            ds = ds.rename(columns={'equity':'position_value'})
-            ds['portfolio_value'] = ds['position_value'] + ds['cash']
-        else:
-            # equity 已是總資產，反推倉位（若沒有 position_value）
-            if 'position_value' not in ds.columns:
-                ds['position_value'] = (ds['equity'] - ds['cash']).fillna(0.0)
-            ds['portfolio_value'] = ds['equity']
-
-    # 百分比欄位統一
-    if 'portfolio_value' in ds.columns:
-        pv = ds['portfolio_value'].replace(0, np.nan)
-        if 'invested_pct' not in ds.columns and 'position_value' in ds.columns:
-            ds['invested_pct'] = (ds['position_value'] / pv).fillna(0.0).clip(0,1)
-        if 'cash_pct' not in ds.columns and 'cash' in ds.columns:
-            ds['cash_pct'] = (ds['cash'] / pv).fillna(0.0).clip(0,1)
-
-    # 為了向下相容：保留 equity = portfolio_value（供舊繪圖函式使用）
-    if 'portfolio_value' in ds.columns:
-        ds['equity'] = ds['portfolio_value']
-
-    return ds
-
 def _initialize_app_logging():
     """初始化應用程式日誌系統"""
     # 只在實際需要時才初始化檔案日誌
@@ -83,28 +41,22 @@ def _initialize_app_logging():
 def calculate_atr(df, window):
     """計算 ATR (Average True Range)"""
     try:
-        # app_dash.py / 2025-08-22 14:30
-        # 統一 OHLC 欄位對應：收盤、最高、最低價
+        # 支援多種欄位名稱格式
         high_col = None
         low_col = None
         close_col = None
         
-        # 優先檢查英文欄位名稱（標準格式）
+        # 檢查英文欄位名稱
         if 'high' in df.columns and 'low' in df.columns and 'close' in df.columns:
             high_col = 'high'
             low_col = 'low'
             close_col = 'close'
-        # 檢查大寫英文欄位名稱
-        elif 'High' in df.columns and 'Low' in df.columns and 'Close' in df.columns:
-            high_col = 'High'
-            low_col = 'Low'
-            close_col = 'Close'
         # 檢查中文欄位名稱
         elif '最高價' in df.columns and '最低價' in df.columns and '收盤價' in df.columns:
             high_col = '最高價'
             low_col = '最低價'
             close_col = '收盤價'
-        # 檢查其他可能的欄位名稱（降級處理）
+        # 檢查其他可能的欄位名稱
         elif 'open' in df.columns and 'close' in df.columns:
             # 如果沒有高低價，用開盤價和收盤價近似
             high_col = 'open'
@@ -134,13 +86,8 @@ def calculate_atr(df, window):
                 close = pd.to_numeric(df[close_col], errors='coerce')
             elif 'close' in df.columns:
                 close = pd.to_numeric(df['close'], errors='coerce')
-            elif 'Close' in df.columns:
-                close = pd.to_numeric(df['Close'], errors='coerce')
             else:
-                # 只記一次警告，避免重複刷屏
-                if not hasattr(calculate_atr, '_warning_logged'):
-                    logger.warning("找不到可用的價格欄位來計算 ATR，降級為 ATR-only 模式")
-                    calculate_atr._warning_logged = True
+                logger.warning("找不到可用的價格欄位來計算 ATR")
                 return pd.Series(index=df.index, dtype=float)
             
             price_change = close.diff().abs()
@@ -148,23 +95,17 @@ def calculate_atr(df, window):
         
         # 檢查計算結果
         if atr is None or atr.empty or atr.isna().all():
-            if not hasattr(calculate_atr, '_warning_logged'):
-                logger.warning(f"ATR 計算結果無效，window={window}，降級為 ATR-only 模式")
-                calculate_atr._warning_logged = True
+            logger.warning(f"ATR 計算結果無效，window={window}")
             return pd.Series(index=df.index, dtype=float)
         
         return atr
     except Exception as e:
-        if not hasattr(calculate_atr, '_warning_logged'):
-            logger.warning(f"ATR 計算失敗: {e}，降級為 ATR-only 模式")
-            calculate_atr._warning_logged = True
+        logger.warning(f"ATR 計算失敗: {e}")
         return pd.Series(index=df.index, dtype=float)
 
 
 def _build_benchmark_df(df_raw):
     """建立基準資料 DataFrame，統一處理欄位名稱和數據轉換"""
-    # app_dash.py / 2025-08-22 14:30
-    # 統一 OHLC 欄位對應：收盤、最高、最低價
     bench = pd.DataFrame(index=pd.to_datetime(df_raw.index))
     
     # 收盤價欄位 - 優先使用英文欄位，回退到中文欄位
@@ -339,9 +280,7 @@ def _pack_result_for_store(result: dict) -> dict:
         'daily_state_std', 'trade_ledger_std',
         'weight_curve',
         # ➊ 新增：保存未套閥門 baseline
-        'daily_state_base', 'trade_ledger_base', 'weight_curve_base',
-        # ➋ 新增：保存 valve 版本
-        'daily_state_valve', 'trade_ledger_valve', 'weight_curve_valve', 'equity_curve_valve'
+        'daily_state_base', 'trade_ledger_base', 'weight_curve_base'
     ]
     out = dict(result)
     for k in keys:
@@ -1031,21 +970,13 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         
                         rv = risk_valve_backtest(**global_valve_params)
 
-                        # app_dash.py / 2025-08-22 15:30
-                        # 全局風險閥門：同時保存 baseline 與 valve 版本，不覆寫標準鍵
-                        # 1) 保存 valve 版本到專用鍵
-                        result['equity_curve_valve']     = pack_series(rv["daily_state_valve"]["equity"])
-                        result['daily_state_valve']      = pack_df(rv["daily_state_valve"])
-                        result['trade_ledger_valve']     = pack_df(rv["trade_ledger_valve"])
-                        result['weight_curve_valve']     = pack_series(rv["weights_valve"])
-                        
-                        # 2) 保存 baseline 版本到專用鍵（如果還沒有）
-                        if "daily_state_base" not in result and result.get("daily_state") is not None:
-                            result["daily_state_base"] = result["daily_state"]
-                        if "trade_ledger_base" not in result and result.get("trade_ledger") is not None:
-                            result["trade_ledger_base"] = result["trade_ledger"]
-                        if "weight_curve_base" not in result and result.get("weight_curve") is not None:
-                            result["weight_curve_base"] = result["weight_curve"]
+                        # 覆寫結果，確保 UI 與輸出一致（和 Ensemble 分支對齊）
+                        result['equity_curve']     = pack_series(rv["daily_state_valve"]["equity"])
+                        result['daily_state']      = pack_df(rv["daily_state_valve"])
+                        result['daily_state_std']  = pack_df(rv["daily_state_valve"])
+                        result['trade_ledger']     = pack_df(rv["trade_ledger_valve"])
+                        result['trade_ledger_std'] = pack_df(rv["trade_ledger_valve"])
+                        result['weight_curve']     = pack_series(rv["weights_valve"])
                         # 給 UI 的標記（下個小節會用到）
                         result['valve'] = {
                             "applied": True,
@@ -1092,6 +1023,23 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                     min_cooldown_days=flat_params.get("min_cooldown_days", 1),
                     min_trade_dw=flat_params.get("min_trade_dw", 0.01)
                 )
+                
+                # 註解掉原本的無條件風險閥門調整（會造成 floor 方向錯誤）
+                # if global_apply:
+                #     logger.info(f"[{strat}] Ensemble 策略應用風險閥門: 原始 delta_cap={ensemble_params.delta_cap}, floor={ensemble_params.floor}")
+                #     
+                #     # 調整 delta_cap（最大風險暴露）
+                #     if ensemble_params.delta_cap > risk_cap:
+                #         ensemble_params.delta_cap = risk_cap
+                #         logger.info(f"[{strat}] 調整 delta_cap 為 {ensemble_params.delta_cap}")
+                #     
+                #     # 調整 floor（最小現金保留）
+                #     min_floor = 1 - risk_cap
+                #     if ensemble_params.floor < min_floor:
+                #         ensemble_params.floor = min_floor
+                #         logger.info(f"[{strat}] 調整 floor 為 {ensemble_params.floor}")
+                #     
+                #     logger.info(f"[{strat}] Ensemble 策略最終參數: delta_cap={ensemble_params.delta_cap}, floor={ensemble_params.floor}")
                 
                 cost_params = CostParams(
                     buy_fee_bp=flat_params.get("buy_fee_bp", 4.27),
@@ -1189,23 +1137,7 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         slope_method="polyfit",            # ← 跟增強分析一致
                         atr_cmp="gt"                       # ← 跟增強分析一致（用 >）
                     )
-                    # app_dash.py / 2025-08-22 15:30
-                    # 全局風險閥門：同時保存 baseline 與 valve 版本，不覆寫標準鍵
-                    # 1) 保存 valve 版本到專用鍵
-                    result['daily_state_valve'] = pack_df(rv["daily_state_valve"])
-                    result['trade_ledger_valve'] = pack_df(rv["trade_ledger_valve"])
-                    result['weight_curve_valve'] = pack_series(rv["weights_valve"])
-                    result['equity_curve_valve'] = pack_series(rv["daily_state_valve"]["equity"])
-                    
-                    # 2) 保存 baseline 版本到專用鍵（如果還沒有）
-                    if "daily_state_base" not in result and result.get("daily_state"):
-                        result["daily_state_base"] = result["daily_state"]
-                    if "trade_ledger_base" not in result and result.get("trade_ledger"):
-                        result["trade_ledger_base"] = result["trade_ledger"]
-                    if "weight_curve_base" not in result and result.get("weight_curve"):
-                        result["weight_curve_base"] = result["weight_curve"]
-                    
-                    # 3) 更新 backtest_result 物件（用於後續處理）
+                    # 覆寫結果，確保 UI 與輸出一致
                     backtest_result.daily_state = rv["daily_state_valve"]
                     backtest_result.ledger = rv["trade_ledger_valve"]
                     backtest_result.weight_curve = rv["weights_valve"]
@@ -1344,6 +1276,24 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         
                         # 建立基準資料（有高低價就帶上）
                         bench = _build_benchmark_df(df_raw)
+                        # 收盤價欄位 - 優先使用英文欄位，回退到中文欄位
+                        if 'close' in df_raw.columns:
+                            bench["收盤價"] = pd.to_numeric(df_raw["close"], errors="coerce")
+                        elif 'Close' in df_raw.columns:
+                            bench["收盤價"] = pd.to_numeric(df_raw["Close"], errors="coerce")
+                        elif '收盤價' in df_raw.columns:
+                            bench["收盤價"] = pd.to_numeric(df_raw["收盤價"], errors="coerce")
+                        
+                        # 最高價和最低價欄位 - 優先使用英文欄位，回退到中文欄位
+                        if 'high' in df_raw.columns and 'low' in df_raw.columns:
+                            bench["最高價"] = pd.to_numeric(df_raw["high"], errors="coerce")
+                            bench["最低價"] = pd.to_numeric(df_raw["low"], errors="coerce")
+                        elif 'High' in df_raw.columns and 'Low' in df_raw.columns:
+                            bench["最高價"] = pd.to_numeric(df_raw["High"], errors="coerce")
+                            bench["最低價"] = pd.to_numeric(df_raw["Low"], errors="coerce")
+                        elif '最高價' in df_raw.columns and '最低價' in df_raw.columns:
+                            bench["最高價"] = pd.to_numeric(df_raw["最高價"], errors="coerce")
+                            bench["最低價"] = pd.to_numeric(df_raw["最低價"], errors="coerce")
                         
                         # 使用進階分析的預設參數：斜率門檻=0，ATR比值=1.5，比較符號=">"
                         risk_signals = compute_risk_valve_signals(
@@ -1450,35 +1400,28 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         # === 安全覆寫：清掉舊鍵並補齊新鍵 ===
                         logger.info(f"[UI_CHECK] 即將覆寫：new_trades={len(result_cap.get('trade_ledger_valve', pd.DataFrame()))} rows, new_ds={len(result_cap.get('daily_state_valve', pd.DataFrame()))} rows")
                         
-                        # app_dash.py / 2025-08-22 15:30
-                        # 全局風險閥門：同時保存 baseline 與 valve 版本，不覆寫標準鍵
-                        # 1) 保存 valve 版本到專用鍵
+                        # 1) 覆寫結果 —— 一律用 pack_df/pack_series
                         if 'trade_ledger_valve' in result_cap:
-                            result['trade_ledger_valve'] = pack_df(result_cap['trade_ledger_valve'])
+                            result['trades'] = pack_df(result_cap['trade_ledger_valve'])
+                            result['trade_ledger'] = pack_df(result_cap['trade_ledger_valve'])
+                            result['trade_ledger_std'] = pack_df(result_cap['trade_ledger_valve'])
                         
                         if 'daily_state_valve' in result_cap:
-                            result['daily_state_valve'] = pack_df(result_cap['daily_state_valve'])
+                            result['daily_state'] = pack_df(result_cap['daily_state_valve'])
+                            result['daily_state_std'] = pack_df(result_cap['daily_state_valve'])
                         
                         if 'weights_valve' in result_cap:
-                            result['weight_curve_valve'] = pack_series(result_cap['weights_valve'])
+                            result['weight_curve'] = pack_series(result_cap['weights_valve'])
                         
                         # 權益曲線：若是 Series
                         if 'daily_state_valve' in result_cap and 'equity' in result_cap['daily_state_valve']:
                             try:
-                                result['equity_curve_valve'] = pack_series(result_cap['daily_state_valve']['equity'])
+                                result['equity_curve'] = pack_series(result_cap['daily_state_valve']['equity'])
                             except Exception:
                                 # 若你存的是 DataFrame
-                                result['equity_curve_valve'] = pack_df(result_cap['daily_state_valve']['equity'].to_frame('equity'))
+                                result['equity_curve'] = pack_df(result_cap['daily_state_valve']['equity'].to_frame('equity'))
                         
-                        # 2) 保存 baseline 版本到專用鍵（如果還沒有）
-                        if "daily_state_base" not in result and result.get("daily_state") is not None:
-                            result["daily_state_base"] = result["daily_state"]
-                        if "trade_ledger_base" not in result and result.get("trade_ledger") is not None:
-                            result["trade_ledger_base"] = result["trade_ledger"]
-                        if "weight_curve_base" not in result and result.get("weight_curve") is not None:
-                            result["weight_curve_base"] = result["weight_curve"]
-                        
-                        # 3) 清掉可能造成混淆的舊快取
+                        # 2) **關鍵**：把 UI 可能拿來用的舊快取清掉，強迫 UI 走新資料
                         for k in ['trades_ui', 'trade_df', 'trade_ledger_std', 'metrics']:
                             if k in result:
                                 result.pop(k, None)
@@ -1597,9 +1540,6 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
     Input('theme-store', 'data')
 )
 def update_tab(data, tab, selected_strategy, theme):
-    # 確保 pandas 可用
-    import pandas as pd
-    
     # === 調試日誌（僅在 DEBUG 級別時顯示）===
     logger.debug(f"update_tab 被調用 - tab: {tab}, strategy: {selected_strategy}")
     
@@ -1667,33 +1607,17 @@ def update_tab(data, tab, selected_strategy, theme):
                 # 建立空表避免後續崩
                 trade_df = pd.DataFrame(columns=['trade_date','type','price','shares','return'])
             
-            # app_dash.py / 2025-08-22 16:00
-            # 取用 daily_state：優先使用套閥版本，其次原始，最後 baseline（與 O2 一致）
-            daily_state_std = None
-
-            if result.get('daily_state_valve'):
-                daily_state_std = df_from_pack(result['daily_state_valve'])
-            elif result.get('daily_state_std'):
-                daily_state_std = df_from_pack(result['daily_state_std'])
-            elif result.get('daily_state'):
-                daily_state_std = df_from_pack(result['daily_state'])
-            elif result.get('daily_state_base'):
-                daily_state_std = df_from_pack(result['daily_state_base'])
-            else:
+            # 日狀態與權益曲線也類似處理
+            daily_state_std = df_from_pack(result.get('daily_state_std'))
+            if daily_state_std is None or daily_state_std.empty:
+                daily_state_std = df_from_pack(result.get('daily_state'))
+            if daily_state_std is None:
                 daily_state_std = pd.DataFrame()
             
-            # app_dash.py / 2025-08-22 16:00
-            # 取用 trade_ledger：優先使用套閥版本，其次原始，最後 baseline（與 O2 一致）
-            trade_ledger_std = None
-            if result.get('trade_ledger_valve'):
-                trade_ledger_std = df_from_pack(result['trade_ledger_valve'])
-            elif result.get('trade_ledger_std'):
-                trade_ledger_std = df_from_pack(result['trade_ledger_std'])
-            elif result.get('trade_ledger'):
-                trade_ledger_std = df_from_pack(result['trade_ledger'])
-            elif result.get('trade_ledger_base'):
-                trade_ledger_std = df_from_pack(result['trade_ledger_base'])
-            else:
+            trade_ledger_std = df_from_pack(result.get('trade_ledger_std'))
+            if trade_ledger_std is None or trade_ledger_std.empty:
+                trade_ledger_std = df_from_pack(result.get('trade_ledger'))
+            if trade_ledger_std is None:
                 trade_ledger_std = pd.DataFrame()
             
             # 記錄來源選擇結果
@@ -1856,11 +1780,8 @@ def update_tab(data, tab, selected_strategy, theme):
                 legend_font_color=legend_font_color,
                 legend=dict(bgcolor=legend_bgcolor, bordercolor=legend_bordercolor, font=dict(color=legend_font_color))
             )
-            # app_dash.py / 2025-08-22 16:00
-            # 相容性：優先使用 valve 日狀態，否則退回原本欄位（與 O2 一致）
-            daily_state = df_from_pack(
-                result.get('daily_state_valve') or result.get('daily_state')
-            )
+            # 檢查是否有 daily_state 可用（ensemble 策略）
+            daily_state = df_from_pack(result.get('daily_state'))
             
             # 優先使用標準化後的資料，確保欄位完整
             if daily_state_std is not None and not daily_state_std.empty:
@@ -1871,24 +1792,15 @@ def update_tab(data, tab, selected_strategy, theme):
                 logger.info(f"[UI] 使用原始 daily_state，欄位: {list(daily_state.columns) if daily_state is not None else None}")
             
             # 檢查點（快速自查）
-            logger.info(f"[UI] trade_df cols={list(trade_df.columns)} head=\n{trade_df.head(3)}")
-            
-            # ✅ 新增：欄位語意統一
-            daily_state_display = normalize_daily_state_columns(daily_state_display)
-
-            # 🔧 修正 log 檢查（原本錯用 daily_state.columns）
             logger.info(f"[UI] daily_state_display cols={list(daily_state_display.columns) if daily_state_display is not None else None}")
             if daily_state_display is not None:
-                has_cols = {'equity','cash'}.issubset(daily_state_display.columns)
-                logger.info(f"[UI] daily_state_display head=\n{daily_state_display[['equity','cash']].head(3) if has_cols else 'Missing equity/cash columns'}")
+                logger.info(f"[UI] daily_state_display head=\n{daily_state_display[['equity','cash']].head(3) if 'equity' in daily_state_display.columns and 'cash' in daily_state_display.columns else 'Missing equity/cash columns'}")
+            logger.info(f"[UI] trade_df cols={list(trade_df.columns)} head=\n{trade_df.head(3)}")
             
             # === 修正：實現 fallback 邏輯，讓單一策略也能顯示權益/現金 ===
             if daily_state_display is not None and not daily_state_display.empty and {'equity','cash'}.issubset(daily_state_display.columns):
                 # 正常：有 daily_state
-                fig2 = plot_equity_cash(
-                    daily_state_display[['equity','cash']].copy(),  # equity 已等於 portfolio_value
-                    df_raw
-                )
+                fig2 = plot_equity_cash(daily_state_display, df_raw)
                 
                 # === 新增：持有權重變化圖（統一背景色） ===
                 fig_w = plot_weight_series(daily_state_display, trade_df)
@@ -1906,7 +1818,7 @@ def update_tab(data, tab, selected_strategy, theme):
                 # 準備資金權重表格數據
                 if not daily_state_display.empty:
                     # 選擇要顯示的欄位（與 Streamlit 一致）
-                    display_cols = ['portfolio_value', 'position_value', 'cash', 'invested_pct', 'cash_pct', 'w']
+                    display_cols = ['equity', 'cash', 'invested_pct', 'cash_pct', 'w', 'position_value']
                     available_cols = [col for col in display_cols if col in daily_state_display.columns]
                     
                     if available_cols:
@@ -1915,28 +1827,22 @@ def update_tab(data, tab, selected_strategy, theme):
                         display_daily_state.index = display_daily_state.index.strftime('%Y-%m-%d')
                         
                         # 格式化數值
-                        for col in ['portfolio_value','position_value','cash']:
+                        for col in ['equity', 'cash', 'position_value']:
                             if col in display_daily_state.columns:
-                                display_daily_state[col] = display_daily_state[col].apply(
-                                    lambda x: f"{int(round(x)):,}" if pd.notnull(x) and not pd.isna(x) else ""
-                                )
+                                display_daily_state[col] = display_daily_state[col].apply(lambda x: f"{int(x):,}" if pd.notnull(x) and not pd.isna(x) else "")
                         
-                        for col in ['invested_pct','cash_pct']:
+                        for col in ['invested_pct', 'cash_pct']:
                             if col in display_daily_state.columns:
-                                display_daily_state[col] = display_daily_state[col].apply(
-                                    lambda x: f"{x:.2%}" if pd.notnull(x) else ""
-                                )
+                                display_daily_state[col] = display_daily_state[col].apply(lambda x: f"{x:.2%}" if pd.notnull(x) else "")
                         
                         for col in ['w']:
                             if col in display_daily_state.columns:
-                                display_daily_state[col] = display_daily_state[col].apply(
-                                    lambda x: f"{x:.4f}" if pd.notnull(x) else ""
-                                )
+                                display_daily_state[col] = display_daily_state[col].apply(lambda x: f"{x:.4f}" if pd.notnull(x) else "")
                         
                         # 創建資金權重表格
                         daily_state_table = html.Div([
-                            html.H5("總資產配置", style={"marginTop": "16px"}),
-                            html.Div("每日資產配置狀態，包含總資產、倉位市值、現金、投資比例等", 
+                            html.H5("資金權重", style={"marginTop": "16px"}),
+                            html.Div("每日資產配置狀態，包含權益、現金、投資比例等", 
                                      style={"fontSize": "14px", "color": "#666", "marginBottom": "8px"}),
                             dash_table.DataTable(
                                 columns=[{"name": i, "id": i} for i in display_daily_state.columns],
@@ -3781,32 +3687,22 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
     valve_info = result.get("valve", {})
     valve_on = bool(valve_info.get("applied", False))
     
-    # app_dash.py / 2025-08-22 15:30
-    # 智能選擇日線資料：優先使用 valve 版本（如果啟用且存在），否則使用 baseline
-    if valve_on and result.get("daily_state_valve"):
-        daily_state = df_from_pack(result["daily_state_valve"])
-        data_source = f"{data_source} (valve)"
+    # 先用閥門後的日線（若有）
+    if valve_on and result.get("daily_state"):
+        daily_state = df_from_pack(result["daily_state"])
     elif result.get("daily_state_std"):
         daily_state = df_from_pack(result["daily_state_std"])
-        data_source = f"{data_source} (std)"
     elif result.get("daily_state"):
         daily_state = df_from_pack(result["daily_state"])
-        data_source = f"{data_source} (original)"
     elif result.get("daily_state_base"):
         daily_state = df_from_pack(result["daily_state_base"])
-        data_source = f"{data_source} (baseline)"
     else:
         daily_state = None
     
-    # app_dash.py / 2025-08-22 16:00
-    # 相容性：優先使用 valve 權重曲線，否則退回原本欄位（與 O2 一致）
+    # 準備 weight_curve 和閥門資訊
     weight_curve = None
-    if result.get("weight_curve_valve"):
-        weight_curve = df_from_pack(result["weight_curve_valve"])
-    elif result.get("weight_curve"):
+    if result.get("weight_curve"):
         weight_curve = df_from_pack(result["weight_curve"])
-    elif result.get("weight_curve_base"):
-        weight_curve = df_from_pack(result["weight_curve_base"])
     
     # 獲取閥門狀態資訊
     valve_info = result.get("valve", {})  # {"applied": bool, "cap": float, "atr_ratio": float or "N/A"}
@@ -3856,15 +3752,10 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
         "ensemble_params": result.get("ensemble_params", {}),
         "data_source": data_source,
         "timestamp": datetime.now().isoformat(),
-        # ➌ 新增：baseline 與 valve 版本一併放進快取
+        # ➌ 新增：baseline 版本一併放進快取
         "daily_state_base": result.get("daily_state_base"),
         "weight_curve_base": result.get("weight_curve_base"),
         "trade_ledger_base": result.get("trade_ledger_base"),
-        # ➍ 新增：valve 版本一併放進快取
-        "daily_state_valve": result.get("daily_state_valve"),
-        "weight_curve_valve": result.get("weight_curve_valve"),
-        "trade_ledger_valve": result.get("trade_ledger_valve"),
-        "equity_curve_valve": result.get("equity_curve_valve"),
     }
     
     status_msg = f"✅ 已載入 {selected_strategy} ({data_source})"
@@ -3979,30 +3870,19 @@ def _auto_cache_best_strategy(bstore, current_selection):
     valve_on = bool(valve_info.get("applied", False))
     
     daily_state = None
-    # app_dash.py / 2025-08-22 15:30
-    # 智能選擇日線資料：優先使用 valve 版本（如果啟用且存在），否則使用 baseline
-    if valve_on and best_result.get("daily_state_valve"):
-        daily_state = df_from_pack(best_result["daily_state_valve"])
-        data_source = f"{data_source} (valve)"
+    if valve_on and best_result.get("daily_state"):                 # adjusted first if valve is on
+        daily_state = df_from_pack(best_result["daily_state"])
     elif best_result.get("daily_state_std"):
         daily_state = df_from_pack(best_result["daily_state_std"])
-        data_source = f"{data_source} (std)"
     elif best_result.get("daily_state"):
         daily_state = df_from_pack(best_result["daily_state"])
-        data_source = f"{data_source} (original)"
     elif best_result.get("daily_state_base"):
         daily_state = df_from_pack(best_result["daily_state_base"])
-        data_source = f"{data_source} (baseline)"
     
-    # app_dash.py / 2025-08-22 16:00
-    # 相容性：優先使用 valve 權重曲線，否則退回原本欄位（與 O2 一致）
+    # 準備 weight_curve 和閥門資訊
     weight_curve = None
-    if best_result.get("weight_curve_valve"):
-        weight_curve = df_from_pack(best_result["weight_curve_valve"])
-    elif best_result.get("weight_curve"):
+    if best_result.get("weight_curve"):
         weight_curve = df_from_pack(best_result["weight_curve"])
-    elif best_result.get("weight_curve_base"):
-        weight_curve = df_from_pack(best_result["weight_curve_base"])
     
     # 若閥門生效，保證分析端覆寫 w_series
     if valve_on and weight_curve is not None and daily_state is not None:
@@ -4053,11 +3933,6 @@ def _auto_cache_best_strategy(bstore, current_selection):
         "daily_state_base": best_result.get("daily_state_base"),
         "weight_curve_base": best_result.get("weight_curve_base"),
         "trade_ledger_base": best_result.get("trade_ledger_base"),
-        # ➍ 新增：valve 版本一併放進快取
-        "daily_state_valve": best_result.get("daily_state_valve"),
-        "weight_curve_valve": best_result.get("weight_curve_valve"),
-        "trade_ledger_valve": best_result.get("trade_ledger_valve"),
-        "equity_curve_valve": best_result.get("equity_curve_valve"),
     }
     
     status_msg = f"🔄 自動快取最佳策略：{best_strategy} ({data_source})"
@@ -4402,7 +4277,426 @@ def generate_pareto_map(n_clicks, cache, backtest_data, rv_mode, risk_cap_value,
     status_msg = f"✅ 成功生成：掃描 cap×ATR 比值 {succeeded}/{tried} 組。顏色=右尾調整幅度（紅=削減，藍=放大），大小=風險觸發天數。目前全局設定：cap={cap_now:.2f}, atr={atr_now:.2f}。資料來源：{data_source}"
     return fig, status_msg
 
+def calculate_pareto_metrics(equity_curve, trade_df):
+    """計算 Pareto Map 所需的指標"""
+    try:
+        # 初始化指標
+        max_drawdown = 0.0
+        pf = 1.0
+        right_tail_loss = 0.0  # 預設：無調整
+        risk_trigger_days = 50
+        
+        # 處理權益曲線數據
+        if equity_curve is not None and not equity_curve.empty:
+            # 確保權益曲線是 Series
+            if isinstance(equity_curve, pd.DataFrame):
+                if len(equity_curve.columns) == 1:
+                    equity_curve = equity_curve.iloc[:, 0]
+                else:
+                    # 如果有多列，使用第一列
+                    equity_curve = equity_curve.iloc[:, 0]
+            
+            # 計算日報酬率
+            daily_returns = equity_curve.pct_change().dropna()
+            
+            if len(daily_returns) > 0:
+                # 1. 最大回撤（愈左愈好）
+                peak = equity_curve.expanding().max()
+                drawdown = (equity_curve - peak) / peak
+                max_drawdown = abs(drawdown.min()) if not drawdown.empty else 0.0
+                
+                # 2. PF（獲利因子，愈上愈好）
+                if trade_df is not None and not trade_df.empty and 'return' in trade_df.columns:
+                    profits = trade_df[trade_df['return'] > 0]['return'].sum()
+                    losses = abs(trade_df[trade_df['return'] < 0]['return'].sum())
+                    pf = profits / losses if losses > 0 else (profits if profits > 0 else 1.0)
+                else:
+                    # 如果沒有交易數據，用年化報酬率代替
+                    total_return = (equity_curve.iloc[-1] / equity_curve.iloc[0] - 1)
+                    annual_return = total_return * (252 / len(daily_returns))
+                    pf = 1 + annual_return  # 轉換為 PF 格式
+                
+                # 3. 右尾調整幅度（正值=削減右尾，負值=放大右尾，0=無調整）
+                # 計算右尾風險：使用偏度和峰度來衡量
+                positive_returns = daily_returns[daily_returns > 0]
+                if len(positive_returns) > 0:
+                    # 計算右尾的調整程度
+                    if len(positive_returns) >= 10:
+                        # 計算偏度
+                        mean_ret = positive_returns.mean()
+                        std_ret = positive_returns.std()
+                        if std_ret > 0:
+                            skewness = ((positive_returns - mean_ret) / std_ret) ** 3
+                            skewness_mean = skewness.mean()
+                            
+                            # 將偏度轉換為 -1 到 1 的範圍
+                            # 正偏度（右尾較長）= 負值（放大右尾）
+                            # 負偏度（左尾較長）= 正值（削減右尾）
+                            if skewness_mean > 0:
+                                # 正偏度：右尾較長，表示放大右尾
+                                right_tail_loss = -min(1.0, skewness_mean / 2)  # 轉換為 -1 到 0
+                            else:
+                                # 負偏度：左尾較長，表示削減右尾
+                                right_tail_loss = min(1.0, abs(skewness_mean) / 2)  # 轉換為 0 到 1
+                        else:
+                            right_tail_loss = 0.0  # 無波動，無調整
+                    else:
+                        right_tail_loss = 0.0  # 數據不足，無調整
+                else:
+                    right_tail_loss = 1.0  # 沒有正報酬，完全削減右尾
+                
+                # 4. 風險觸發天數（點大小，越大＝管得越勤）
+                if trade_df is not None and not trade_df.empty and 'trade_date' in trade_df.columns:
+                    trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
+                    # 計算有交易的天數
+                    risk_trigger_days = len(trade_df['trade_date'].dt.date.unique())
+                else:
+                    # 如果沒有交易數據，用權益曲線的波動率來估計
+                    volatility = daily_returns.std()
+                    risk_trigger_days = min(100, int(volatility * 1000))  # 轉換為合理範圍
+        else:
+            # 如果沒有權益曲線，嘗試從交易數據計算基本指標
+            if trade_df is not None and not trade_df.empty:
+                # 從交易數據計算基本指標
+                if 'return' in trade_df.columns:
+                    profits = trade_df[trade_df['return'] > 0]['return'].sum()
+                    losses = abs(trade_df[trade_df['return'] < 0]['return'].sum())
+                    pf = profits / losses if losses > 0 else (profits if profits > 0 else 1.0)
+                
+                # 估算風險觸發天數
+                if 'trade_date' in trade_df.columns:
+                    trade_df['trade_date'] = pd.to_datetime(trade_df['trade_date'])
+                    risk_trigger_days = len(trade_df['trade_date'].dt.date.unique())
+                else:
+                    risk_trigger_days = len(trade_df)
+                
+                # 如果沒有權益曲線，無法計算最大回撤和右尾損失，使用預設值
+                max_drawdown = 0.1  # 預設 10% 回撤
+                right_tail_loss = 0.0  # 預設：無調整
+        
+        return {
+            'max_drawdown': max_drawdown,
+            'pf': pf,
+            'right_tail_loss': right_tail_loss,
+            'risk_trigger_days': risk_trigger_days
+        }
+        
+    except Exception as e:
+        logger.exception(f"計算 Pareto 指標失敗：{e}")
+        return None
 
+def create_pareto_map(pareto_data):
+    """創建風險-報酬地圖（Pareto Map）"""
+    df = pd.DataFrame(pareto_data)
+    
+    # 創建散點圖
+    fig = go.Figure()
+    
+    # 添加散點圖
+    fig.add_trace(go.Scatter(
+        x=df['max_drawdown'],
+        y=df['pf'],
+        mode='markers',
+        marker=dict(
+            size=df['risk_trigger_days'] / 10,  # 點大小：風險觸發天數
+            color=df['right_tail_loss'],  # 顏色：右尾調整幅度
+            colorscale='RdBu',  # 紅藍色階：紅色=削減右尾（正值），藍色=放大右尾（負值）
+            cmin=-1,  # 最小值：-1（最大放大右尾）
+            cmax=1,   # 最大值：1（最大削減右尾）
+            mid=0,    # 中線：0（無調整）
+            colorbar=dict(
+                title="右尾調整幅度<br>（紅=削減，藍=放大）",
+                titleside="right",
+                tickformat=".2f",
+                tickmode="array",
+                tickvals=[-1, -0.5, 0, 0.5, 1],
+                ticktext=["放大右尾", "輕微放大", "無調整", "輕微削減", "削減右尾"]
+            ),
+            showscale=True
+        ),
+        text=df['strategy'],
+        hovertemplate=(
+            "<b>%{text}</b><br>" +
+            "最大回撤: %{x:.2%}<br>" +
+            "PF: %{y:.2f}<br>" +
+            "右尾調整: %{marker.color:.2f}<br>" +
+            "風險觸發天數: %{marker.size:.0f}<br>" +
+            "<extra></extra>"
+        ),
+        name="策略"
+    ))
+    
+    # 添加 Pareto 邊界線（理想區域）
+    # 找到最佳點（最小回撤，最大PF）
+    best_idx = df['max_drawdown'].idxmin()
+    best_dd = df.loc[best_idx, 'max_drawdown']
+    best_pf = df.loc[best_idx, 'pf']
+    
+    # 添加理想區域的參考線
+    fig.add_shape(
+        type="rect",
+        x0=0, y0=best_pf,
+        x1=best_dd, y1=df['pf'].max() * 1.1,
+        fillcolor="rgba(0,255,0,0.1)",
+        line=dict(color="green", width=2, dash="dash"),
+        name="理想區域"
+    )
+    
+    # 添加文字標註
+    fig.add_annotation(
+        x=best_dd/2, y=best_pf + (df['pf'].max() - best_pf)/2,
+        text="理想區域<br>（低回撤，高PF）",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=2,
+        arrowcolor="green",
+        font=dict(size=12, color="green")
+    )
+    
+    # 更新佈局
+    fig.update_layout(
+        title={
+            'text': '風險-報酬地圖（Pareto Map）',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 20}
+        },
+        xaxis_title="最大回撤（愈左愈好）",
+        yaxis_title="PF 獲利因子（愈上愈好）",
+        xaxis=dict(
+            tickformat=".1%",
+            gridcolor="rgba(128,128,128,0.2)"
+        ),
+        yaxis=dict(
+            gridcolor="rgba(128,128,128,0.2)"
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(size=12),
+        legend=dict(
+            x=1.02,
+            y=1,
+            xanchor="left",
+            yanchor="top"
+        ),
+        margin=dict(r=150)  # 為顏色條留出空間
+    )
+    
+    # 添加網格
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="rgba(128,128,128,0.2)")
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="rgba(128,128,128,0.2)")
+    
+    return fig
+
+# --------- 新增：Pareto Map CSV 下載 Callback ---------
+@app.callback(
+    Output("pareto-csv-download", "data"),
+    Input("download-pareto-csv", "n_clicks"),
+    State("enhanced-trades-cache", "data"),
+    State("backtest-store", "data"),
+    State("rv-mode", "value"),
+    prevent_initial_call=True
+)
+def download_pareto_csv(n_clicks, cache, backtest_data, rv_mode):
+    """下載 Pareto Map 數據為 CSV 檔案"""
+    if not n_clicks:
+        return None
+    
+    try:
+        # 優先使用 enhanced-trades-cache，如果沒有則嘗試從 backtest-store 生成
+        if cache:
+            df_raw = df_from_pack(cache.get("df_raw"))
+            daily_state = df_from_pack(cache.get("daily_state"))
+            data_source = "enhanced-trades-cache"
+        elif backtest_data and backtest_data.get("results"):
+            results = backtest_data["results"]
+            selected_strategy = None
+            for strategy_name, result in results.items():
+                if result.get("daily_state") or result.get("daily_state_std"):
+                    selected_strategy = strategy_name
+                    break
+            
+            if not selected_strategy:
+                return None
+            
+            result = results[selected_strategy]
+            daily_state = df_from_pack(result.get("daily_state") or result.get("daily_state_std"))
+            df_raw = df_from_pack(backtest_data.get("df_raw"))
+            data_source = f"backtest-store ({selected_strategy})"
+        else:
+            return None
+        
+        # 資料驗證
+        if df_raw is None or df_raw.empty or daily_state is None or daily_state.empty:
+            return None
+        
+        # 欄名對齊
+        c_open = "open" if "open" in df_raw.columns else _first_col(df_raw, ["Open","開盤價"])
+        c_close = "close" if "close" in df_raw.columns else _first_col(df_raw, ["Close","收盤價"])
+        c_high  = "high" if "high" in df_raw.columns else _first_col(df_raw, ["High","最高價"])
+        c_low   = "low"  if "low"  in df_raw.columns else _first_col(df_raw, ["Low","最低價"])
+        
+        if c_open is None or c_close is None:
+            return None
+        
+        # 準備輸入序列
+        open_px = pd.to_numeric(df_raw[c_open], errors="coerce").dropna()
+        open_px.index = pd.to_datetime(df_raw.index)
+        
+        # 取 open_px 後，準備 w（baseline 優先）
+        ds_base = df_from_pack(cache.get("daily_state_base")) if cache else None
+        wc_base = series_from_pack(cache.get("weight_curve_base")) if cache else None
+        
+        # 從 backtest-store 來的情況
+        if ds_base is None and (not cache) and backtest_data and "results" in backtest_data:
+            ds_base = df_from_pack(result.get("daily_state_base"))
+            # 注意：weight_curve_base 也可能存在於 result
+            try:
+                wc_base = series_from_pack(result.get("weight_curve_base"))
+            except Exception:
+                wc_base = None
+        
+        # 以 baseline w 為優先；沒有再退回現行 daily_state['w']
+        if ds_base is not None and (not ds_base.empty) and ("w" in ds_base.columns):
+            w = pd.to_numeric(ds_base["w"], errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+        elif wc_base is not None and (not wc_base.empty):
+            w = pd.to_numeric(wc_base, errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+        else:
+            # 後備：沿用現行 daily_state（可能已被閥門壓過）
+            if "w" not in daily_state.columns:
+                return None
+            w = pd.to_numeric(daily_state["w"], errors="coerce").reindex(open_px.index).ffill().fillna(0.0)
+        
+        bench = pd.DataFrame({
+            "收盤價": pd.to_numeric(df_raw[c_close], errors="coerce"),
+        }, index=pd.to_datetime(df_raw.index))
+        if c_high and c_low:
+            bench["最高價"] = pd.to_numeric(df_raw[c_high], errors="coerce")
+            bench["最低價"] = pd.to_numeric(df_raw[c_low], errors="coerce")
+        
+        # 使用與 generate_pareto_map 相同的參數範圍和邏輯
+        logger.info("=== 開始生成 Pareto Map 數據用於 CSV 下載 ===")
+        caps = np.round(np.arange(0.10, 1.00 + 1e-9, 0.05), 2)
+        atr_mults = np.round(np.arange(1.00, 2.00 + 1e-9, 0.05), 2)
+        logger.info(f"cap 範圍: {len(caps)} 個值，從 {caps[0]} 到 {caps[-1]}")
+        logger.info(f"ATR 比值範圍: {len(atr_mults)} 個值，從 {atr_mults[0]} 到 {atr_mults[-1]}")
+        logger.info(f"總組合數: {len(caps) * len(atr_mults)}")
+        
+        pareto_data = []
+        tried = 0
+        succeeded = 0
+        
+        # 檢查是否可以匯入 risk_valve_backtest
+        try:
+            from SSS_EnsembleTab import risk_valve_backtest
+            logger.info("成功匯入 risk_valve_backtest")
+        except Exception as e:
+            logger.error(f"匯入 risk_valve_backtest 失敗: {e}")
+            return None
+        
+        logger.info("開始執行參數掃描...")
+        for cap_level in caps:
+            for atr_mult in atr_mults:
+                tried += 1
+                if tried % 50 == 0:  # 每50次記錄一次進度
+                    logger.info(f"進度: {tried}/{len(caps) * len(atr_mults)} (cap={cap_level:.2f}, atr={atr_mult:.2f})")
+                
+                try:
+                    out = risk_valve_backtest(
+                        open_px=open_px, w=w, cost=None, benchmark_df=bench,
+                        mode=(rv_mode or "cap"), cap_level=float(cap_level),
+                        slope20_thresh=0.0, slope60_thresh=0.0,
+                        atr_win=20, atr_ref_win=60, atr_ratio_mult=float(atr_mult),
+                        use_slopes=True, slope_method="polyfit", atr_cmp="gt"
+                    )
+                    
+                    if out and "metrics" in out:
+                        m = out["metrics"]
+                        
+                        # 計算 Pareto 指標
+                        equity_curve = out.get("daily_state_valve", {}).get("equity")
+                        trade_df = None  # risk_valve_backtest 不直接提供交易記錄
+                        
+                        metrics = calculate_pareto_metrics(equity_curve, trade_df)
+                        if metrics:
+                            pareto_data.append({
+                                'strategy': f'cap_{cap_level:.2f}_atr_{atr_mult:.2f}',
+                                'cap': cap_level,
+                                'atr_ratio': atr_mult,
+                                'max_drawdown': metrics['max_drawdown'],
+                                'pf': metrics['pf'],
+                                'right_tail_loss': metrics['right_tail_loss'],
+                                'risk_trigger_days': metrics['risk_trigger_days'],
+                                'pf_orig': m.get('pf_orig', 0.0),
+                                'pf_valve': m.get('pf_valve', 0.0),
+                                'mdd_orig': m.get('mdd_orig', 0.0),
+                                'mdd_valve': m.get('mdd_valve', 0.0),
+                                'right_tail_reduction': m.get('right_tail_reduction', 0.0)
+                            })
+                            succeeded += 1
+                            
+                except Exception as e:
+                    logger.debug(f"參數組合 cap={cap_level}, atr={atr_mult} 計算失敗: {e}")
+                    continue
+        
+        if not pareto_data:
+            logger.warning("沒有生成任何 Pareto 數據")
+            return None
+        
+        logger.info(f"成功生成 {succeeded} 組 Pareto 數據")
+        
+        # 轉換為 DataFrame 並準備下載
+        df_pareto = pd.DataFrame(pareto_data)
+        
+        # 添加時間戳記
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"pareto_map_data_{timestamp}.csv"
+        
+        # 返回 CSV 下載數據
+        return dcc.send_data_frame(
+            df_pareto.to_csv,
+            filename,
+            index=False,
+            encoding='utf-8-sig'  # 支援中文
+        )
+        
+    except Exception as e:
+        logger.exception(f"下載 Pareto Map CSV 失敗：{e}")
+        return None
+
+# --------- 新增：動態切換 Top/Worst 的 callback ---------
+@app.callback(
+    [dash.Output("phase-top-table", "data"),
+     dash.Output("phase-worst-table", "data")],
+    [dash.Input("phase-source", "value"),
+     dash.Input("phase-table-store", "data")]
+)
+def _update_top_worst(src, store):
+    if not store:
+        raise dash.exceptions.PreventUpdate
+    import pandas as pd
+    records = store.get("records", [])
+    ordered = store.get("ordered", [])
+    basis   = store.get("basis", None)
+    has_stage = store.get("has_stage", False)
+
+    df = pd.DataFrame(records)
+    # 來源過濾
+    if has_stage and "階段" in df.columns:
+        if src == "acc":
+            df = df[df["階段"].astype(str).str.contains("加碼", na=False)]
+        elif src == "dis":
+            df = df[df["階段"].astype(str).str.contains("減碼", na=False)]
+
+    if basis and basis in df.columns and not df.empty:
+        top3   = df.nlargest(3, basis)
+        worst3 = df.nsmallest(3, basis)
+    else:
+        top3   = df.head(3)
+        worst3 = df.tail(3)
+
+    return top3[ordered].to_dict("records"), worst3[ordered].to_dict("records")
 
 if __name__ == '__main__':
     # 初始化日誌系統（只在實際運行 app 時）
@@ -4414,8 +4708,8 @@ if __name__ == '__main__':
     # 設置更安全的服務器配置
     app.run_server(
         debug=True, 
-        host='127.0.0.1', 
-        port=8050,
+        host='127.0.0.2', 
+        port=8051,
         threaded=True,
         use_reloader=False  # 避免重載器造成的線程問題
-    )     
+    ) 

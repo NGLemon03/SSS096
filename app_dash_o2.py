@@ -27,48 +27,6 @@ os.environ["SSS_CREATE_LOGS"] = "1"
 # 獲取日誌器（懶加載）
 logger = get_logger("SSS.App")
 
-def normalize_daily_state_columns(ds: pd.DataFrame) -> pd.DataFrame:
-    """將不同來源的 daily_state 欄位語意統一：
-    - 若 equity 實為倉位市值，改名為 position_value
-    - 建立 portfolio_value = position_value + cash
-    - 保證有 invested_pct / cash_pct
-    """
-    if ds is None or ds.empty:
-        return ds
-    ds = ds.copy()
-
-    # 若已經有 position_value 與 cash，直接建立 portfolio_value
-    if {'position_value','cash'}.issubset(ds.columns):
-        ds['portfolio_value'] = ds['position_value'] + ds['cash']
-
-    # 僅有 equity + cash 的情況 -> 判斷 equity 是總資產還是倉位
-    elif {'equity','cash'}.issubset(ds.columns):
-        # 判斷規則：若 equity/(equity+cash) 的中位數顯著 < 0.9，較像「倉位市值」
-        ratio = (ds['equity'] / (ds['equity'] + ds['cash'])).replace([np.inf, -np.inf], np.nan).clip(0,1)
-        if ratio.median(skipna=True) < 0.9:
-            # 把 equity 當成倉位市值
-            ds = ds.rename(columns={'equity':'position_value'})
-            ds['portfolio_value'] = ds['position_value'] + ds['cash']
-        else:
-            # equity 已是總資產，反推倉位（若沒有 position_value）
-            if 'position_value' not in ds.columns:
-                ds['position_value'] = (ds['equity'] - ds['cash']).fillna(0.0)
-            ds['portfolio_value'] = ds['equity']
-
-    # 百分比欄位統一
-    if 'portfolio_value' in ds.columns:
-        pv = ds['portfolio_value'].replace(0, np.nan)
-        if 'invested_pct' not in ds.columns and 'position_value' in ds.columns:
-            ds['invested_pct'] = (ds['position_value'] / pv).fillna(0.0).clip(0,1)
-        if 'cash_pct' not in ds.columns and 'cash' in ds.columns:
-            ds['cash_pct'] = (ds['cash'] / pv).fillna(0.0).clip(0,1)
-
-    # 為了向下相容：保留 equity = portfolio_value（供舊繪圖函式使用）
-    if 'portfolio_value' in ds.columns:
-        ds['equity'] = ds['portfolio_value']
-
-    return ds
-
 def _initialize_app_logging():
     """初始化應用程式日誌系統"""
     # 只在實際需要時才初始化檔案日誌
@@ -339,9 +297,7 @@ def _pack_result_for_store(result: dict) -> dict:
         'daily_state_std', 'trade_ledger_std',
         'weight_curve',
         # ➊ 新增：保存未套閥門 baseline
-        'daily_state_base', 'trade_ledger_base', 'weight_curve_base',
-        # ➋ 新增：保存 valve 版本
-        'daily_state_valve', 'trade_ledger_valve', 'weight_curve_valve', 'equity_curve_valve'
+        'daily_state_base', 'trade_ledger_base', 'weight_curve_base'
     ]
     out = dict(result)
     for k in keys:
@@ -1031,21 +987,13 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         
                         rv = risk_valve_backtest(**global_valve_params)
 
-                        # app_dash.py / 2025-08-22 15:30
-                        # 全局風險閥門：同時保存 baseline 與 valve 版本，不覆寫標準鍵
-                        # 1) 保存 valve 版本到專用鍵
-                        result['equity_curve_valve']     = pack_series(rv["daily_state_valve"]["equity"])
-                        result['daily_state_valve']      = pack_df(rv["daily_state_valve"])
-                        result['trade_ledger_valve']     = pack_df(rv["trade_ledger_valve"])
-                        result['weight_curve_valve']     = pack_series(rv["weights_valve"])
-                        
-                        # 2) 保存 baseline 版本到專用鍵（如果還沒有）
-                        if "daily_state_base" not in result and result.get("daily_state") is not None:
-                            result["daily_state_base"] = result["daily_state"]
-                        if "trade_ledger_base" not in result and result.get("trade_ledger") is not None:
-                            result["trade_ledger_base"] = result["trade_ledger"]
-                        if "weight_curve_base" not in result and result.get("weight_curve") is not None:
-                            result["weight_curve_base"] = result["weight_curve"]
+                        # 覆寫結果，確保 UI 與輸出一致（和 Ensemble 分支對齊）
+                        result['equity_curve']     = pack_series(rv["daily_state_valve"]["equity"])
+                        result['daily_state']      = pack_df(rv["daily_state_valve"])
+                        result['daily_state_std']  = pack_df(rv["daily_state_valve"])
+                        result['trade_ledger']     = pack_df(rv["trade_ledger_valve"])
+                        result['trade_ledger_std'] = pack_df(rv["trade_ledger_valve"])
+                        result['weight_curve']     = pack_series(rv["weights_valve"])
                         # 給 UI 的標記（下個小節會用到）
                         result['valve'] = {
                             "applied": True,
@@ -1189,23 +1137,7 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         slope_method="polyfit",            # ← 跟增強分析一致
                         atr_cmp="gt"                       # ← 跟增強分析一致（用 >）
                     )
-                    # app_dash.py / 2025-08-22 15:30
-                    # 全局風險閥門：同時保存 baseline 與 valve 版本，不覆寫標準鍵
-                    # 1) 保存 valve 版本到專用鍵
-                    result['daily_state_valve'] = pack_df(rv["daily_state_valve"])
-                    result['trade_ledger_valve'] = pack_df(rv["trade_ledger_valve"])
-                    result['weight_curve_valve'] = pack_series(rv["weights_valve"])
-                    result['equity_curve_valve'] = pack_series(rv["daily_state_valve"]["equity"])
-                    
-                    # 2) 保存 baseline 版本到專用鍵（如果還沒有）
-                    if "daily_state_base" not in result and result.get("daily_state"):
-                        result["daily_state_base"] = result["daily_state"]
-                    if "trade_ledger_base" not in result and result.get("trade_ledger"):
-                        result["trade_ledger_base"] = result["trade_ledger"]
-                    if "weight_curve_base" not in result and result.get("weight_curve"):
-                        result["weight_curve_base"] = result["weight_curve"]
-                    
-                    # 3) 更新 backtest_result 物件（用於後續處理）
+                    # 覆寫結果，確保 UI 與輸出一致
                     backtest_result.daily_state = rv["daily_state_valve"]
                     backtest_result.ledger = rv["trade_ledger_valve"]
                     backtest_result.weight_curve = rv["weights_valve"]
@@ -1450,35 +1382,28 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
                         # === 安全覆寫：清掉舊鍵並補齊新鍵 ===
                         logger.info(f"[UI_CHECK] 即將覆寫：new_trades={len(result_cap.get('trade_ledger_valve', pd.DataFrame()))} rows, new_ds={len(result_cap.get('daily_state_valve', pd.DataFrame()))} rows")
                         
-                        # app_dash.py / 2025-08-22 15:30
-                        # 全局風險閥門：同時保存 baseline 與 valve 版本，不覆寫標準鍵
-                        # 1) 保存 valve 版本到專用鍵
+                        # 1) 覆寫結果 —— 一律用 pack_df/pack_series
                         if 'trade_ledger_valve' in result_cap:
-                            result['trade_ledger_valve'] = pack_df(result_cap['trade_ledger_valve'])
+                            result['trades'] = pack_df(result_cap['trade_ledger_valve'])
+                            result['trade_ledger'] = pack_df(result_cap['trade_ledger_valve'])
+                            result['trade_ledger_std'] = pack_df(result_cap['trade_ledger_valve'])
                         
                         if 'daily_state_valve' in result_cap:
-                            result['daily_state_valve'] = pack_df(result_cap['daily_state_valve'])
+                            result['daily_state'] = pack_df(result_cap['daily_state_valve'])
+                            result['daily_state_std'] = pack_df(result_cap['daily_state_valve'])
                         
                         if 'weights_valve' in result_cap:
-                            result['weight_curve_valve'] = pack_series(result_cap['weights_valve'])
+                            result['weight_curve'] = pack_series(result_cap['weights_valve'])
                         
                         # 權益曲線：若是 Series
                         if 'daily_state_valve' in result_cap and 'equity' in result_cap['daily_state_valve']:
                             try:
-                                result['equity_curve_valve'] = pack_series(result_cap['daily_state_valve']['equity'])
+                                result['equity_curve'] = pack_series(result_cap['daily_state_valve']['equity'])
                             except Exception:
                                 # 若你存的是 DataFrame
-                                result['equity_curve_valve'] = pack_df(result_cap['daily_state_valve']['equity'].to_frame('equity'))
+                                result['equity_curve'] = pack_df(result_cap['daily_state_valve']['equity'].to_frame('equity'))
                         
-                        # 2) 保存 baseline 版本到專用鍵（如果還沒有）
-                        if "daily_state_base" not in result and result.get("daily_state") is not None:
-                            result["daily_state_base"] = result["daily_state"]
-                        if "trade_ledger_base" not in result and result.get("trade_ledger") is not None:
-                            result["trade_ledger_base"] = result["trade_ledger"]
-                        if "weight_curve_base" not in result and result.get("weight_curve") is not None:
-                            result["weight_curve_base"] = result["weight_curve"]
-                        
-                        # 3) 清掉可能造成混淆的舊快取
+                        # 2) **關鍵**：把 UI 可能拿來用的舊快取清掉，強迫 UI 走新資料
                         for k in ['trades_ui', 'trade_df', 'trade_ledger_std', 'metrics']:
                             if k in result:
                                 result.pop(k, None)
@@ -1597,9 +1522,6 @@ def run_backtest(n_clicks, auto_run, ticker, start_date, end_date, discount, coo
     Input('theme-store', 'data')
 )
 def update_tab(data, tab, selected_strategy, theme):
-    # 確保 pandas 可用
-    import pandas as pd
-    
     # === 調試日誌（僅在 DEBUG 級別時顯示）===
     logger.debug(f"update_tab 被調用 - tab: {tab}, strategy: {selected_strategy}")
     
@@ -1667,33 +1589,17 @@ def update_tab(data, tab, selected_strategy, theme):
                 # 建立空表避免後續崩
                 trade_df = pd.DataFrame(columns=['trade_date','type','price','shares','return'])
             
-            # app_dash.py / 2025-08-22 16:00
-            # 取用 daily_state：優先使用套閥版本，其次原始，最後 baseline（與 O2 一致）
-            daily_state_std = None
-
-            if result.get('daily_state_valve'):
-                daily_state_std = df_from_pack(result['daily_state_valve'])
-            elif result.get('daily_state_std'):
-                daily_state_std = df_from_pack(result['daily_state_std'])
-            elif result.get('daily_state'):
-                daily_state_std = df_from_pack(result['daily_state'])
-            elif result.get('daily_state_base'):
-                daily_state_std = df_from_pack(result['daily_state_base'])
-            else:
+            # 日狀態與權益曲線也類似處理
+            daily_state_std = df_from_pack(result.get('daily_state_std'))
+            if daily_state_std is None or daily_state_std.empty:
+                daily_state_std = df_from_pack(result.get('daily_state'))
+            if daily_state_std is None:
                 daily_state_std = pd.DataFrame()
             
-            # app_dash.py / 2025-08-22 16:00
-            # 取用 trade_ledger：優先使用套閥版本，其次原始，最後 baseline（與 O2 一致）
-            trade_ledger_std = None
-            if result.get('trade_ledger_valve'):
-                trade_ledger_std = df_from_pack(result['trade_ledger_valve'])
-            elif result.get('trade_ledger_std'):
-                trade_ledger_std = df_from_pack(result['trade_ledger_std'])
-            elif result.get('trade_ledger'):
-                trade_ledger_std = df_from_pack(result['trade_ledger'])
-            elif result.get('trade_ledger_base'):
-                trade_ledger_std = df_from_pack(result['trade_ledger_base'])
-            else:
+            trade_ledger_std = df_from_pack(result.get('trade_ledger_std'))
+            if trade_ledger_std is None or trade_ledger_std.empty:
+                trade_ledger_std = df_from_pack(result.get('trade_ledger'))
+            if trade_ledger_std is None:
                 trade_ledger_std = pd.DataFrame()
             
             # 記錄來源選擇結果
@@ -1856,11 +1762,8 @@ def update_tab(data, tab, selected_strategy, theme):
                 legend_font_color=legend_font_color,
                 legend=dict(bgcolor=legend_bgcolor, bordercolor=legend_bordercolor, font=dict(color=legend_font_color))
             )
-            # app_dash.py / 2025-08-22 16:00
-            # 相容性：優先使用 valve 日狀態，否則退回原本欄位（與 O2 一致）
-            daily_state = df_from_pack(
-                result.get('daily_state_valve') or result.get('daily_state')
-            )
+            # 檢查是否有 daily_state 可用（ensemble 策略）
+            daily_state = df_from_pack(result.get('daily_state'))
             
             # 優先使用標準化後的資料，確保欄位完整
             if daily_state_std is not None and not daily_state_std.empty:
@@ -1871,24 +1774,15 @@ def update_tab(data, tab, selected_strategy, theme):
                 logger.info(f"[UI] 使用原始 daily_state，欄位: {list(daily_state.columns) if daily_state is not None else None}")
             
             # 檢查點（快速自查）
-            logger.info(f"[UI] trade_df cols={list(trade_df.columns)} head=\n{trade_df.head(3)}")
-            
-            # ✅ 新增：欄位語意統一
-            daily_state_display = normalize_daily_state_columns(daily_state_display)
-
-            # 🔧 修正 log 檢查（原本錯用 daily_state.columns）
             logger.info(f"[UI] daily_state_display cols={list(daily_state_display.columns) if daily_state_display is not None else None}")
             if daily_state_display is not None:
-                has_cols = {'equity','cash'}.issubset(daily_state_display.columns)
-                logger.info(f"[UI] daily_state_display head=\n{daily_state_display[['equity','cash']].head(3) if has_cols else 'Missing equity/cash columns'}")
+                logger.info(f"[UI] daily_state_display head=\n{daily_state_display[['equity','cash']].head(3) if 'equity' in daily_state_display.columns and 'cash' in daily_state_display.columns else 'Missing equity/cash columns'}")
+            logger.info(f"[UI] trade_df cols={list(trade_df.columns)} head=\n{trade_df.head(3)}")
             
             # === 修正：實現 fallback 邏輯，讓單一策略也能顯示權益/現金 ===
             if daily_state_display is not None and not daily_state_display.empty and {'equity','cash'}.issubset(daily_state_display.columns):
                 # 正常：有 daily_state
-                fig2 = plot_equity_cash(
-                    daily_state_display[['equity','cash']].copy(),  # equity 已等於 portfolio_value
-                    df_raw
-                )
+                fig2 = plot_equity_cash(daily_state_display, df_raw)
                 
                 # === 新增：持有權重變化圖（統一背景色） ===
                 fig_w = plot_weight_series(daily_state_display, trade_df)
@@ -1906,7 +1800,7 @@ def update_tab(data, tab, selected_strategy, theme):
                 # 準備資金權重表格數據
                 if not daily_state_display.empty:
                     # 選擇要顯示的欄位（與 Streamlit 一致）
-                    display_cols = ['portfolio_value', 'position_value', 'cash', 'invested_pct', 'cash_pct', 'w']
+                    display_cols = ['equity', 'cash', 'invested_pct', 'cash_pct', 'w', 'position_value']
                     available_cols = [col for col in display_cols if col in daily_state_display.columns]
                     
                     if available_cols:
@@ -1915,28 +1809,22 @@ def update_tab(data, tab, selected_strategy, theme):
                         display_daily_state.index = display_daily_state.index.strftime('%Y-%m-%d')
                         
                         # 格式化數值
-                        for col in ['portfolio_value','position_value','cash']:
+                        for col in ['equity', 'cash', 'position_value']:
                             if col in display_daily_state.columns:
-                                display_daily_state[col] = display_daily_state[col].apply(
-                                    lambda x: f"{int(round(x)):,}" if pd.notnull(x) and not pd.isna(x) else ""
-                                )
+                                display_daily_state[col] = display_daily_state[col].apply(lambda x: f"{int(x):,}" if pd.notnull(x) and not pd.isna(x) else "")
                         
-                        for col in ['invested_pct','cash_pct']:
+                        for col in ['invested_pct', 'cash_pct']:
                             if col in display_daily_state.columns:
-                                display_daily_state[col] = display_daily_state[col].apply(
-                                    lambda x: f"{x:.2%}" if pd.notnull(x) else ""
-                                )
+                                display_daily_state[col] = display_daily_state[col].apply(lambda x: f"{x:.2%}" if pd.notnull(x) else "")
                         
                         for col in ['w']:
                             if col in display_daily_state.columns:
-                                display_daily_state[col] = display_daily_state[col].apply(
-                                    lambda x: f"{x:.4f}" if pd.notnull(x) else ""
-                                )
+                                display_daily_state[col] = display_daily_state[col].apply(lambda x: f"{x:.4f}" if pd.notnull(x) else "")
                         
                         # 創建資金權重表格
                         daily_state_table = html.Div([
-                            html.H5("總資產配置", style={"marginTop": "16px"}),
-                            html.Div("每日資產配置狀態，包含總資產、倉位市值、現金、投資比例等", 
+                            html.H5("資金權重", style={"marginTop": "16px"}),
+                            html.Div("每日資產配置狀態，包含權益、現金、投資比例等", 
                                      style={"fontSize": "14px", "color": "#666", "marginBottom": "8px"}),
                             dash_table.DataTable(
                                 columns=[{"name": i, "id": i} for i in display_daily_state.columns],
@@ -3781,32 +3669,22 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
     valve_info = result.get("valve", {})
     valve_on = bool(valve_info.get("applied", False))
     
-    # app_dash.py / 2025-08-22 15:30
-    # 智能選擇日線資料：優先使用 valve 版本（如果啟用且存在），否則使用 baseline
-    if valve_on and result.get("daily_state_valve"):
-        daily_state = df_from_pack(result["daily_state_valve"])
-        data_source = f"{data_source} (valve)"
+    # 先用閥門後的日線（若有）
+    if valve_on and result.get("daily_state"):
+        daily_state = df_from_pack(result["daily_state"])
     elif result.get("daily_state_std"):
         daily_state = df_from_pack(result["daily_state_std"])
-        data_source = f"{data_source} (std)"
     elif result.get("daily_state"):
         daily_state = df_from_pack(result["daily_state"])
-        data_source = f"{data_source} (original)"
     elif result.get("daily_state_base"):
         daily_state = df_from_pack(result["daily_state_base"])
-        data_source = f"{data_source} (baseline)"
     else:
         daily_state = None
     
-    # app_dash.py / 2025-08-22 16:00
-    # 相容性：優先使用 valve 權重曲線，否則退回原本欄位（與 O2 一致）
+    # 準備 weight_curve 和閥門資訊
     weight_curve = None
-    if result.get("weight_curve_valve"):
-        weight_curve = df_from_pack(result["weight_curve_valve"])
-    elif result.get("weight_curve"):
+    if result.get("weight_curve"):
         weight_curve = df_from_pack(result["weight_curve"])
-    elif result.get("weight_curve_base"):
-        weight_curve = df_from_pack(result["weight_curve_base"])
     
     # 獲取閥門狀態資訊
     valve_info = result.get("valve", {})  # {"applied": bool, "cap": float, "atr_ratio": float or "N/A"}
@@ -3856,15 +3734,10 @@ def _load_enhanced_strategy_to_cache(n_clicks, selected_strategy, bstore):
         "ensemble_params": result.get("ensemble_params", {}),
         "data_source": data_source,
         "timestamp": datetime.now().isoformat(),
-        # ➌ 新增：baseline 與 valve 版本一併放進快取
+        # ➌ 新增：baseline 版本一併放進快取
         "daily_state_base": result.get("daily_state_base"),
         "weight_curve_base": result.get("weight_curve_base"),
         "trade_ledger_base": result.get("trade_ledger_base"),
-        # ➍ 新增：valve 版本一併放進快取
-        "daily_state_valve": result.get("daily_state_valve"),
-        "weight_curve_valve": result.get("weight_curve_valve"),
-        "trade_ledger_valve": result.get("trade_ledger_valve"),
-        "equity_curve_valve": result.get("equity_curve_valve"),
     }
     
     status_msg = f"✅ 已載入 {selected_strategy} ({data_source})"
@@ -3979,30 +3852,19 @@ def _auto_cache_best_strategy(bstore, current_selection):
     valve_on = bool(valve_info.get("applied", False))
     
     daily_state = None
-    # app_dash.py / 2025-08-22 15:30
-    # 智能選擇日線資料：優先使用 valve 版本（如果啟用且存在），否則使用 baseline
-    if valve_on and best_result.get("daily_state_valve"):
-        daily_state = df_from_pack(best_result["daily_state_valve"])
-        data_source = f"{data_source} (valve)"
+    if valve_on and best_result.get("daily_state"):                 # adjusted first if valve is on
+        daily_state = df_from_pack(best_result["daily_state"])
     elif best_result.get("daily_state_std"):
         daily_state = df_from_pack(best_result["daily_state_std"])
-        data_source = f"{data_source} (std)"
     elif best_result.get("daily_state"):
         daily_state = df_from_pack(best_result["daily_state"])
-        data_source = f"{data_source} (original)"
     elif best_result.get("daily_state_base"):
         daily_state = df_from_pack(best_result["daily_state_base"])
-        data_source = f"{data_source} (baseline)"
     
-    # app_dash.py / 2025-08-22 16:00
-    # 相容性：優先使用 valve 權重曲線，否則退回原本欄位（與 O2 一致）
+    # 準備 weight_curve 和閥門資訊
     weight_curve = None
-    if best_result.get("weight_curve_valve"):
-        weight_curve = df_from_pack(best_result["weight_curve_valve"])
-    elif best_result.get("weight_curve"):
+    if best_result.get("weight_curve"):
         weight_curve = df_from_pack(best_result["weight_curve"])
-    elif best_result.get("weight_curve_base"):
-        weight_curve = df_from_pack(best_result["weight_curve_base"])
     
     # 若閥門生效，保證分析端覆寫 w_series
     if valve_on and weight_curve is not None and daily_state is not None:
@@ -4053,11 +3915,6 @@ def _auto_cache_best_strategy(bstore, current_selection):
         "daily_state_base": best_result.get("daily_state_base"),
         "weight_curve_base": best_result.get("weight_curve_base"),
         "trade_ledger_base": best_result.get("trade_ledger_base"),
-        # ➍ 新增：valve 版本一併放進快取
-        "daily_state_valve": best_result.get("daily_state_valve"),
-        "weight_curve_valve": best_result.get("weight_curve_valve"),
-        "trade_ledger_valve": best_result.get("trade_ledger_valve"),
-        "equity_curve_valve": best_result.get("equity_curve_valve"),
     }
     
     status_msg = f"🔄 自動快取最佳策略：{best_strategy} ({data_source})"
